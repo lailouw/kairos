@@ -42,12 +42,8 @@ let toastT=null;
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2600)}
 
 /* ---------- state ---------- */
-function seed(){
-  const codes='M70 RHE RF S08 C96 M70 RHE RHE C96 M70 RF S08 RHE M70 S08 RHE RTP S08 C96 M70 RHE RHE S08 C96 RTP RTP RHE S08 C96 M70'.split(' ');
-  const shifts={};codes.forEach((c,i)=>shifts['2026-11-'+pad(i+1)]=c);
-  return {v:1,updatedAt:0,shifts,blocks:[],ehpad:{},urgent:[]};
-}
-function valid(s){return s&&typeof s==='object'&&s.shifts&&Array.isArray(s.blocks)&&Array.isArray(s.urgent)}
+function seed(){return {v:1,updatedAt:0,shifts:{},blocks:[],ehpad:{},urgent:[]}}
+function valid(s){return s&&typeof s==='object'&&s.shifts&&typeof s.shifts==='object'&&Array.isArray(s.blocks)&&Array.isArray(s.urgent)}
 let state=null;
 // ancienne clé 'odt-state' relue si 'kairos-state' n'existe pas encore (jamais effacée)
 try{state=JSON.parse(localStorage.getItem('kairos-state')||localStorage.getItem('odt-state'))}catch(e){}
@@ -55,80 +51,48 @@ if(!valid(state))state=seed();
 if(!state.ehpad)state.ehpad={};
 try{if(!localStorage.getItem('kairos-state'))persistLocal()}catch(e){}
 
-function persistLocal(){try{localStorage.setItem('kairos-state',JSON.stringify(state))}catch(e){}}
-function save(){state.updatedAt=Date.now();persistLocal();queueWrite();renderAll()}
+function persistLocal(){try{localStorage.setItem('kairos-state',JSON.stringify(state))}catch(e){setSync('err')}}
+function save(){state.updatedAt=Date.now();persistLocal();renderAll()}
 
-/* ---------- one-time imports (added by Claude) ---------- */
-const IMPORTS=[{id:'ensemble-2026-11-09',blocks:[
-  ['2026-11-09','12:30','14:00','Déjeuner ensemble'],
-  ['2026-11-09','20:00','23:00','Soirée ensemble'],
-  ['2026-11-10','19:00','23:00','Soirée ensemble'],
-  ['2026-11-11','09:00','23:00','Journée ensemble (repos tous les deux)'],
-  ['2026-11-12','08:00','10:00','Matinée ensemble'],
-  ['2026-11-12','20:00','23:00','Soirée ensemble'],
-  ['2026-11-13','08:00','11:00','Matinée ensemble'],
-  ['2026-11-13','19:00','23:00','Soirée ensemble'],
-  ['2026-11-14','18:30','23:00','Soirée ensemble'],
-  ['2026-11-15','09:00','12:30','Matinée ensemble'],
-  ['2026-11-15','20:00','23:00','Soirée ensemble']
-]},{id:'rdv-2026-11-09',blocks:[
-  ['2026-11-09','14:00','17:00','RDV compta','broflip',['RDV compta 14h']],
-  ['2026-11-10','15:00','16:30','RDV Indy','broflip',['RDV Indy 15h']],
-  ['2026-11-12','09:00','10:30','Électricité','other',['Électricité à mettre en marche à 9h']]
-]},{id:'fix-2026-11-12',run(){
-  state.blocks=state.blocks.filter(b=>!(b.date==='2026-11-12'&&b.cat==='love'&&b.title==='Matinée ensemble'));
-  state.blocks.forEach(b=>{if(b.date==='2026-11-12'&&b.title==='Électricité')b.cat='broflip'});
-}}];
-let importsDone=false;
-function applyImports(){
-  if(importsDone)return;importsDone=true;
-  state.imports=state.imports||[];let changed=false;
-  IMPORTS.forEach(im=>{
-    if(state.imports.includes(im.id))return;
-    if(im.run)im.run();
-    (im.blocks||[]).forEach(([date,start,end,title,cat,tasks])=>state.blocks.push({id:uid(),cat:cat||'love',title,date,start,end,imp:false,tasks:(tasks||[]).map(text=>({id:uid(),text,done:false}))}));
-    state.imports.push(im.id);changed=true;
-  });
-  if(changed)save();
-}
-
-/* ---------- remote save (db) ---------- */
-let dref=null,writing=false,pending=false,wTimer=null;
+/* ---------- status dot ---------- */
+// shortcut: seulement « local » pour l'instant, la synchro en ligne viendra à l'étape 6
 function setSync(s){const el=$('#sync');el.className='sync '+s;el.title={ok:'Sauvegardé',loading:'Chargement…',err:'Sauvegarde impossible pour le moment',local:'Sauvegarde sur cet appareil uniquement',slow:'Connexion lente…'}[s]||''}
-function queueWrite(){if(!dref)return;clearTimeout(wTimer);wTimer=setTimeout(flush,700)}
-async function flush(){
-  if(!dref)return;
-  if(writing){pending=true;return}
-  writing=true;
-  try{await dref.set({state:JSON.parse(JSON.stringify(state))});setSync('ok')}
-  catch(e){if(e&&e.code==='unavailable')setTimeout(flush,1500+Math.random()*1500);else setSync('err')}
-  writing=false;
-  if(pending){pending=false;flush()}
+
+/* ---------- export / import ---------- */
+function exportData(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='kairos-sauvegarde-'+key(new Date())+'.json';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast('Sauvegarde téléchargée');
 }
-async function initRemote(){
-  if(!window.claude||!window.claude.use){setSync('local');applyImports();return}
-  try{
-    const [db,user]=await Promise.all([window.claude.use('db'),window.claude.use('user')]);
-    if(!db||!user){setSync('local');applyImports();return}
-    const id=await user.id();
-    if(!id){setSync('local');applyImports();return}
-    dref=db.doc('data/users/'+id+'/odt');
-    setSync('loading');
-    const to=setTimeout(()=>setSync('slow'),10000);
-    let first=true;
-    dref.onSnapshot(snap=>{
-      const remote=snap.exists?(snap.data()||{}).state:null;
-      if(valid(remote)&&(remote.updatedAt||0)>(state.updatedAt||0)){
-        state=JSON.parse(JSON.stringify(remote));if(!state.ehpad)state.ehpad={};
-        persistLocal();renderAll();
-      }
-      if(!snap.metadata.fromCache){
-        clearTimeout(to);
-        if(first){first=false;if(!valid(remote)||(remote.updatedAt||0)<(state.updatedAt||0)||!snap.exists)flush();applyImports()}
-        setSync('ok');
-      }
-    },()=>{clearTimeout(to);setSync('local');dref=null;applyImports()});
-  }catch(e){setSync('local');applyImports()}
+let importing=null;
+function readImport(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    let d=null;try{d=JSON.parse(r.result)}catch(e){}
+    if(d&&d.state&&!d.shifts)d=d.state; // format de la base Claude : {state:{…}}
+    if(!valid(d)){$('#impErr').textContent="Ce fichier n'est pas une sauvegarde KairOs / ODT.";return}
+    importing=d;
+    $('#impInfo').innerHTML=`Fichier : <b>${Object.keys(d.shifts).length}</b> postes, <b>${d.blocks.length}</b> plages, <b>${d.urgent.length}</b> urgents.<br>Il va <b>remplacer</b> les données de cet appareil.`;
+    $('#impGo').hidden=false;$('#impErr').textContent='';
+  };
+  r.readAsText(file);
+}
+function applyImport(){
+  if(!importing)return;
+  try{localStorage.setItem('kairos-avant-import',JSON.stringify(state))}catch(e){} // filet de sécurité
+  state=JSON.parse(JSON.stringify(importing));importing=null;
+  if(!state.ehpad)state.ehpad={};
+  delete state.imports;
+  save();closeSheet();toast('Données importées ✓');
+}
+function openData(){
+  importing=null;
+  openSheet(`<div class="sh-head"><span class="tag t-ehpad">Mes données</span><button class="x" data-act="close" aria-label="Fermer">✕</button></div>
+    <h2>Sauvegarde</h2><p class="meta">Tes données sont enregistrées sur cet appareil. Garde une copie de secours de temps en temps.</p>
+    <div class="sh-foot"><button class="btn" data-act="export">⬇ Exporter</button><label class="btn ghost" style="text-align:center;cursor:pointer">⬆ Importer<input type="file" accept=".json,application/json" id="impFile" hidden></label></div>
+    <p class="meta" id="impInfo" style="margin-top:14px"></p><div class="err" id="impErr"></div>
+    <div class="sh-foot"><button class="btn danger" data-act="importGo" id="impGo" hidden>Remplacer mes données</button></div>`,{kind:'data'});
 }
 
 /* ---------- planning ---------- */
@@ -375,6 +339,9 @@ document.addEventListener('click',e=>{
     case 'today':curMon=mondayOf(new Date());renderPlan();break;
     case 'fs':toggleFS();break;
     case 'close':closeSheet();break;
+    case 'data':openData();break;
+    case 'export':exportData();break;
+    case 'importGo':applyImport();break;
     case 'fab':if(tab==='urg')openUrgAdd();else openEditor(defaultSlot());break;
     case 'open':openDetails(a.dataset.type,a.dataset.k,a.dataset.id);break;
     case 'shift':openShift(a.dataset.k);break;
@@ -393,6 +360,7 @@ document.addEventListener('click',e=>{
 });
 
 document.addEventListener('change',e=>{
+  if(e.target.id==='impFile'&&e.target.files[0]){readImport(e.target.files[0]);return}
   if(e.target.name==='cat'&&sheetCtx&&sheetCtx.kind==='editor'){
     const v=e.target.value,tag=$('#edTag');tag.className='tag t-'+v;
     const ti=$('#sheet input[name=title]');if(ti)ti.placeholder=PH[v];
@@ -450,5 +418,5 @@ document.fonts&&document.fonts.ready&&document.fonts.ready.then(fitHeight);
 setTimeout(()=>$('#splash').classList.add('out'),2200);
 setInterval(tickClock,1000);
 setInterval(()=>{if(!sheetCtx){renderPlan();renderNow()}},60000);
-initRemote();
+setSync('local');
 })();
