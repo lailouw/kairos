@@ -49,11 +49,13 @@ function seed(){
 }
 function valid(s){return s&&typeof s==='object'&&s.shifts&&Array.isArray(s.blocks)&&Array.isArray(s.urgent)}
 let state=null;
-try{state=JSON.parse(localStorage.getItem('odt-state'))}catch(e){}
+// ancienne clé 'odt-state' relue si 'kairos-state' n'existe pas encore (jamais effacée)
+try{state=JSON.parse(localStorage.getItem('kairos-state')||localStorage.getItem('odt-state'))}catch(e){}
 if(!valid(state))state=seed();
 if(!state.ehpad)state.ehpad={};
+try{if(!localStorage.getItem('kairos-state'))persistLocal()}catch(e){}
 
-function persistLocal(){try{localStorage.setItem('odt-state',JSON.stringify(state))}catch(e){}}
+function persistLocal(){try{localStorage.setItem('kairos-state',JSON.stringify(state))}catch(e){}}
 function save(){state.updatedAt=Date.now();persistLocal();queueWrite();renderAll()}
 
 /* ---------- one-time imports (added by Claude) ---------- */
