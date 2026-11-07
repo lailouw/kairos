@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ODT – Optimisateur de temps</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="bgfx"><i></i><i></i><i></i></div>
+
+<div id="splash" data-act="enter">
+  <div class="rings"><i></i><i></i><i></i></div>
+  <div class="splash-in">
+    <div class="logo"><span>O</span><span>D</span><span>T</span></div>
+    <div class="tagline">Optimisateur de temps</div>
+    <div class="underline"></div>
+  </div>
+  <div class="tap">Touchez pour entrer</div>
+</div>
+
+<div id="app">
+  <header class="top" id="top">
+    <div class="brand"><b>O</b><b>D</b><b>T</b><span class="sync" id="sync" title="Sauvegarde"></span></div>
+    <div class="wk" id="wkNav">
+      <button class="ibtn" data-act="prev" aria-label="Semaine précédente">‹</button>
+      <div id="wkLabel"></div>
+      <button class="ibtn" data-act="next" aria-label="Semaine suivante">›</button>
+    </div>
+    <div class="uh-title" id="urgTitle" hidden>Trucs urgents</div>
+    <button class="todayb" data-act="today" id="todayBtn"><span class="lg">Aujourd'hui</span><span class="sm">Auj.</span></button>
+    <div class="clock"><b id="clkT">--:--</b><small id="clkD"></small></div>
+    <button class="ibtn fsbtn" data-act="fs" id="fsBtn" aria-label="Plein écran" title="Plein écran"></button>
+  </header>
+
+  <main>
+    <section id="vPlan">
+      <div class="grid glass" id="grid"></div>
+    </section>
+    <section id="vUrg" hidden></section>
+  </main>
+
+  <aside class="side" id="side">
+    <div class="card glass" id="pNow"></div>
+    <div class="card glass" id="pStats"></div>
+    <div class="card glass urgc" id="pUrg"></div>
+    <p class="hint">Touche un jour pour changer ton poste EHPAD. Touche une case vide pour ajouter une plage. Touche une plage pour voir ce que tu as à faire.</p>
+  </aside>
+</div>
+
+<button class="fab" id="fab" data-act="fab" aria-label="Ajouter">+</button>
+<nav class="tabs glass">
+  <button data-tab="plan" class="on">Planning</button>
+  <button data-tab="urg">Urgent <span id="badge"></span></button>
+</nav>
+
+<div id="ov" data-act="close"></div>
+<div id="sheet" role="dialog" aria-modal="true"></div>
+<div id="toast" class="glass"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
