@@ -12,10 +12,10 @@ const SHIFTS={
   RTP:{name:'Repos temps partiel',rest:1}
 };
 const CATS={
-  ehpad:{name:'EHPAD',color:'#1E9FD9'},
-  broflip:{name:'BroFlip',color:'#34E89E'},
-  love:{name:'Copine & chat',color:'#F27AA6'},
-  other:{name:'Autres',color:'#A57049'}
+  ehpad:{name:'EHPAD',color:'#7C9CFF'},
+  broflip:{name:'BroFlip',color:'#5FD4AE'},
+  love:{name:'Copine & chat',color:'#F0A0C0'},
+  other:{name:'Autres',color:'#E0B36A'}
 };
 const PH={broflip:'Ex : récup + annonces',love:'Ex : soirée en amoureux',other:'Ex : courses, ménage, sport'};
 const ICON_FS='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
@@ -88,9 +88,9 @@ function applyImport(){
 }
 function openData(){
   importing=null;
-  openSheet(`<div class="sh-head"><span class="tag t-ehpad">Mes données</span><button class="x" data-act="close" aria-label="Fermer">✕</button></div>
+  openSheet(`<div class="sh-head"><span class="tag t-ehpad">Mes données</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <h2>Sauvegarde</h2><p class="meta">Tes données sont enregistrées sur cet appareil. Garde une copie de secours de temps en temps.</p>
-    <div class="sh-foot"><button class="btn" data-act="export">⬇ Exporter</button><label class="btn ghost" style="text-align:center;cursor:pointer">⬆ Importer<input type="file" accept=".json,application/json" id="impFile" hidden></label></div>
+    <div class="sh-foot"><button class="btn" data-act="export">↓ Exporter</button><label class="btn ghost" style="text-align:center;cursor:pointer">↑ Importer<input type="file" accept=".json,application/json" id="impFile" hidden></label></div>
     <p class="meta" id="impInfo" style="margin-top:14px"></p><div class="err" id="impErr"></div>
     <div class="sh-foot"><button class="btn danger" data-act="importGo" id="impGo" hidden>Remplacer mes données</button></div>`,{kind:'data'});
 }
@@ -123,7 +123,7 @@ function blockHTML(it){
   const top=(s-START*60)/60,h=(e-s)/60,w=100/it.n,left=it.lane*w;
   const done=it.tasks.filter(t=>t.done).length;
   const prog=it.tasks.length&&h>=1.5?`<span class="prog">✓ ${done}/${it.tasks.length}</span>`:'';
-  return `<div class="blk c-${it.cat}${it.imp?' has-imp':''}${h<1?' short':''}" style="top:calc(${top} * var(--h) + 1px);height:calc(${h} * var(--h) - 2px);left:calc(${left}% + 2px);width:calc(${w}% - 4px)" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}">${it.imp?'<span class="imp">!</span>':''}<span class="bt">${esc(it.title)}</span><span class="bh">${hfmt(it.s)}–${hfmt(it.e)}</span>${prog}</div>`;
+  return `<div class="blk c-${it.cat}${it.imp?' has-imp':''}${h<1?' short':''}" style="top:calc(${top} * var(--h) + 1px);height:calc(${h} * var(--h) - 2px);left:calc(${left}% + 2px);width:calc(${w}% - 4px)" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}">${it.imp?'<span class="imp" title="Important"></span>':''}<span class="bt">${esc(it.title)}</span><span class="bh">${hfmt(it.s)}–${hfmt(it.e)}</span>${prog}</div>`;
 }
 function weekDays(){return [...Array(7)].map((_,i)=>addDays(curMon,i))}
 function renderPlan(){
@@ -165,9 +165,9 @@ function renderNow(){
   const cur=items.filter(it=>it.s<=nm&&nm<it.e);
   let next=items.find(it=>it.s>nm),nextDay='';
   if(!next){for(let i=1;i<=7&&!next;i++){const k=key(addDays(now,i)),its=itemsForDay(k);if(its.length){next=its[0];nextDay=i===1?'Demain':DAYS[(addDays(now,i).getDay()+6)%7]}}}
-  const row=(it,lbl)=>`<button class="nrow" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}"><i style="background:${CATS[it.cat].color}"></i><div><small>${lbl}</small><b>${it.imp?'⚠ ':''}${esc(it.type==='ehpad'?'EHPAD · '+it.code:it.title)}</b></div><span>${hfmt(it.s)}–${hfmt(it.e)}</span></button>`;
+  const row=(it,lbl)=>`<button class="nrow" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}"><i style="background:${CATS[it.cat].color}"></i><div><small>${lbl}</small><b>${it.imp?'<span class="impdot"></span>':''}${esc(it.type==='ehpad'?'EHPAD · '+it.code:it.title)}</b></div><span>${hfmt(it.s)}–${hfmt(it.e)}</span></button>`;
   let html='<h3><span>Maintenant</span></h3><div class="nowc">';
-  html+=cur.length?cur.map(it=>row(it,'En cours')).join(''):'<div class="nrow free">Temps libre 🙂</div>';
+  html+=cur.length?cur.map(it=>row(it,'En cours')).join(''):'<div class="nrow free">Temps libre</div>';
   if(next)html+=row(next,nextDay?'Ensuite · '+nextDay:'Ensuite');
   html+='</div>';
   $('#pNow').innerHTML=html;
@@ -177,11 +177,11 @@ function renderNow(){
 function urgListHTML(){
   const open=state.urgent.filter(u=>!u.done).sort((a,b)=>b.at-a.at);
   const done=state.urgent.filter(u=>u.done).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0));
-  const li=u=>`<li class="${u.done?'done':''}"><button class="ck" data-act="ckUrg" data-id="${u.id}">${u.done?'✓':''}</button><div class="txt"><span>${esc(u.text)}</span><small>${ago(u.at)}</small></div><button class="del" data-act="delUrg" data-id="${u.id}" aria-label="Supprimer">✕</button></li>`;
+  const li=u=>`<li class="${u.done?'done':''}"><button class="ck" data-act="ckUrg" data-id="${u.id}">${u.done?'✓':''}</button><div class="txt"><span>${esc(u.text)}</span><small>${ago(u.at)}</small></div><button class="del" data-act="delUrg" data-id="${u.id}" aria-label="Supprimer">×</button></li>`;
   let html='';
-  if(!open.length&&!done.length)html+=`<div class="empty-u"><b>🎉</b>Rien d'urgent pour l'instant.</div>`;
+  if(!open.length&&!done.length)html+=`<div class="empty-u"><b>✓</b>Rien d'urgent pour l'instant.</div>`;
   else{
-    html+=open.length?`<ul class="ulist">${open.map(li).join('')}</ul>`:`<div class="empty-u" style="padding:18px"><b>✅</b>Tout est fait.</div>`;
+    html+=open.length?`<ul class="ulist">${open.map(li).join('')}</ul>`:`<div class="empty-u" style="padding:18px"><b>✓</b>Tout est fait.</div>`;
     if(done.length)html+=`<div class="usec"><span>Fait (${done.length})</span><button data-act="clearUrg">Tout effacer</button></div><ul class="ulist">${done.map(li).join('')}</ul>`;
   }
   return {html,open:open.length};
@@ -251,11 +251,11 @@ function openDetails(type,k,id,focus){
     time=sh.segs.map(s=>hfmt(t2m(s[0]))+' – '+hfmt(t2m(s[1]))).join(' et ');
   }else{cat=ref.cat;title=ref.title||CATS[cat].name;time=hfmt(t2m(ref.start))+' – '+hfmt(endMin(ref.end))}
   const tasks=ref.tasks||[],done=tasks.filter(t=>t.done).length;
-  const html=`<div class="sh-head"><span class="tag t-${cat}">${CATS[cat].name}</span><button class="x" data-act="close" aria-label="Fermer">✕</button></div>
+  const html=`<div class="sh-head"><span class="tag t-${cat}">${CATS[cat].name}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <h2>${esc(title)}</h2><p class="meta">${dayLabel(k)} · ${time}</p>
-    <button class="impbtn${ref.imp?' on':''}" data-act="toggleImp">⚠ ${ref.imp?'Important':'Marquer comme important'}</button>
+    <button class="impbtn${ref.imp?' on':''}" data-act="toggleImp"><span class="impdot"></span>${ref.imp?'Important':'Marquer comme important'}</button>
     <div class="tasks-h"><span>À faire</span><span>${done}/${tasks.length}</span></div>
-    <ul class="tasks">${tasks.map(t=>`<li class="${t.done?'done':''}"><button class="ck" data-act="ckTask" data-tid="${t.id}">${t.done?'✓':''}</button><span>${esc(t.text)}</span><button class="del" data-act="delTask" data-tid="${t.id}" aria-label="Supprimer">✕</button></li>`).join('')||`<li class="empty">Rien de prévu pour l'instant. Ajoute ce que tu dois faire ci-dessous.</li>`}</ul>
+    <ul class="tasks">${tasks.map(t=>`<li class="${t.done?'done':''}"><button class="ck" data-act="ckTask" data-tid="${t.id}">${t.done?'✓':''}</button><span>${esc(t.text)}</span><button class="del" data-act="delTask" data-tid="${t.id}" aria-label="Supprimer">×</button></li>`).join('')||`<li class="empty">Rien de prévu pour l'instant. Ajoute ce que tu dois faire ci-dessous.</li>`}</ul>
     <form class="addrow" data-form="addTask"><input name="t" placeholder="Ajouter une tâche…" autocomplete="off" maxlength="200"><button>Ajouter</button></form>
     <div class="sh-foot">${type==='ehpad'?`<button class="btn ghost" data-act="shift" data-k="${k}">Changer le poste du jour</button>`:`<button class="btn ghost" data-act="edit">Modifier</button><button class="btn danger" data-act="delBlock">Supprimer</button>`}</div>`;
   openSheet(html,{kind:'details',type,k,id});
@@ -268,13 +268,13 @@ function openEditor(opts){
   const mon=mondayOf(parse(v.date));
   const dayOpts=[...Array(7)].map((_,i)=>{const k=key(addDays(mon,i));return `<option value="${k}"${k===v.date?' selected':''}>${dayLabel(k)}</option>`}).join('');
   const pills=['broflip','love','other'].map(c=>`<label><input type="radio" name="cat" value="${c}"${v.cat===c?' checked':''}><span class="pill"><i style="background:${CATS[c].color}"></i>${CATS[c].name}</span></label>`).join('');
-  const html=`<div class="sh-head"><span class="tag t-${v.cat}" id="edTag">${b?'Modifier la plage':'Nouvelle plage'}</span><button class="x" data-act="close" aria-label="Fermer">✕</button></div>
+  const html=`<div class="sh-head"><span class="tag t-${v.cat}" id="edTag">${b?'Modifier la plage':'Nouvelle plage'}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <form data-form="saveBlock">
       <div class="field"><span class="lbl">Catégorie</span><div class="pills">${pills}</div></div>
       <div class="field"><span class="lbl">Titre</span><input class="inp" name="title" value="${esc(v.title)}" placeholder="${PH[v.cat]}" maxlength="60" autocomplete="off"></div>
       <div class="field"><span class="lbl">Jour</span><select class="inp" name="date">${dayOpts}</select></div>
       <div class="field row2"><div><span class="lbl">Début</span><input class="inp" type="time" name="start" step="900" value="${v.start}" required></div><div><span class="lbl">Fin</span><input class="inp" type="time" name="end" step="900" value="${v.end}" required></div></div>
-      <label class="toggle"><input type="checkbox" name="imp"${v.imp?' checked':''}><span>⚠ C'est important</span></label>
+      <label class="toggle"><input type="checkbox" name="imp"${v.imp?' checked':''}><span>C'est important</span></label>
       <div class="err" id="edErr"></div>
       <div class="sh-foot"><button type="button" class="btn ghost" data-act="close">Annuler</button><button class="btn">${b?'Enregistrer':'Créer la plage'}</button></div>
     </form>`;
@@ -285,14 +285,14 @@ function openShift(k){
   const cur=state.shifts[k]||'';
   const btn=(code)=>{const s=SHIFTS[code];const sub=s.segs?s.segs.map(x=>hfmt(t2m(x[0]))+'–'+hfmt(t2m(x[1]))).join(' / '):'Pas de travail';
     return `<button class="shb ${s.segs?'work':''}${cur===code?' on':''}" data-act="setShift" data-k="${k}" data-code="${code}"><b>${code}</b><small>${s.name} · ${sub}</small></button>`};
-  const html=`<div class="sh-head"><span class="tag t-ehpad">Poste EHPAD</span><button class="x" data-act="close" aria-label="Fermer">✕</button></div>
+  const html=`<div class="sh-head"><span class="tag t-ehpad">Poste EHPAD</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <h2>${dayLabel(k)}</h2><p class="meta">Choisis ton poste pour ce jour.</p>
     <div class="shgrid">${Object.keys(SHIFTS).map(btn).join('')}<button class="shb wide${!cur?' on':''}" data-act="setShift" data-k="${k}" data-code="">Pas encore connu</button></div>`;
   openSheet(html,{kind:'shift',k});
 }
 
 function openUrgAdd(){
-  openSheet(`<div class="sh-head"><span class="tag" style="background:rgba(255,90,95,.14);color:#FF7A7E">Urgent</span><button class="x" data-act="close" aria-label="Fermer">✕</button></div>
+  openSheet(`<div class="sh-head"><span class="tag t-urg">Urgent</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <h2>Noter un truc urgent</h2>
     <form class="addrow" data-form="addUrg" style="margin-top:14px"><input name="t" placeholder="Ex : vite aller chercher des croquettes" autocomplete="off" maxlength="200"><button>Ajouter</button></form>`,{kind:'urg'});
   setTimeout(()=>{const i=$('#sheet input[name=t]');if(i)i.focus()},280);
@@ -420,3 +420,4 @@ setInterval(tickClock,1000);
 setInterval(()=>{if(!sheetCtx){renderPlan();renderNow()}},60000);
 setSync('local');
 })();
+
