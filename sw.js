@@ -1,6 +1,6 @@
 // Mode hors connexion : l'appli est gardée en cache sur l'appareil.
 // À chaque nouvelle version mise en ligne, changer ce numéro.
-const CACHE = 'zephir-v6';
+const CACHE = 'zephir-v7';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
   'icones/icone-192.png', 'icones/icone-512.png', 'icones/apple-touch-icon.png'];
 
@@ -24,7 +24,8 @@ self.addEventListener('fetch', e => {
   const fonts = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
   if (!mine && !fonts) return;
   e.respondWith(
-    fetch(req).then(res => {
+    // no-cache : GitHub Pages dit aux navigateurs de garder les fichiers 10 min ; on redemande toujours si le fichier a changé
+    fetch(req, { cache: 'no-cache' }).then(res => {
       if (res.ok || res.type === 'opaque') { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || (req.mode === 'navigate' ? caches.match('index.html') : undefined)))
