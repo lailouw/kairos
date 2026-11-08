@@ -80,7 +80,7 @@ async function pull(first){
   try{
     if(!sync.gist){sync.gist=await findGist();saveSync()}
     const r=sync.gist?await readRemote():null;
-    if(r&&(first||r.updatedAt>state.updatedAt)){
+    if(r&&r.updatedAt>state.updatedAt){ // la version la plus récente gagne, jamais une version vide (updatedAt 0)
       try{localStorage.setItem('kairos-avant-synchro',JSON.stringify(state))}catch(e){}
       state=r;if(!state.ehpad)state.ehpad={};persistLocal();renderAll();
     }
@@ -104,6 +104,8 @@ async function push(){
     setSync(e===401?'auth':'err');
   }
 }
+// copie gardée avant une synchro ou un import ; on ne propose que celles qui contiennent quelque chose
+function backupOf(){for(const k of ['kairos-avant-synchro','kairos-avant-import']){try{const d=JSON.parse(localStorage.getItem(k));if(valid(d)&&(d.blocks.length||Object.keys(d.shifts).length||d.urgent.length))return d}catch(e){}}return null}
 function schedulePush(){clearTimeout(pushT);pushT=setTimeout(push,1500)}
 async function connect(token){
   sync={token};
@@ -151,9 +153,10 @@ function openData(){
     <h2 style="margin-top:22px">Synchro en ligne</h2>
     ${sync?`<p class="meta">Connecté à GitHub : tes données passent d'un appareil à l'autre.</p>
     <div class="sh-foot"><button class="btn ghost" data-act="syncNow">Synchroniser</button><button class="btn danger" data-act="syncOff">Déconnecter</button></div>`
-    :`<p class="meta">Colle ton jeton GitHub (droit « Gists » seulement), le même sur chaque appareil. S'il y a déjà des données en ligne, elles remplacent celles de cet appareil (une copie est gardée).</p>
+    :`<p class="meta">Colle ton jeton GitHub (droit « Gists » seulement), le même sur chaque appareil. La version la plus récente (en ligne ou sur cet appareil) est gardée, l'autre est mise de côté.</p>
     <form class="addrow" data-form="syncOn"><input name="t" type="password" placeholder="github_pat_…" autocomplete="off"><button>Connecter</button></form>`}
-    <div class="err" id="syncErr"></div>`,{kind:'data'});
+    <div class="err" id="syncErr"></div>
+    ${backupOf()?`<div class="sh-foot"><button class="btn ghost" data-act="restore">↺ Revenir à la version d'avant (${backupOf().blocks.length} plages)</button></div>`:''}`,{kind:'data'});
 }
 
 /* ---------- planning ---------- */
@@ -404,6 +407,7 @@ document.addEventListener('click',e=>{
     case 'export':exportData();break;
     case 'importGo':applyImport();break;
     case 'syncNow':closeSheet();pull();break;
+    case 'restore':{const b=backupOf();if(!b)break;state=b;if(!state.ehpad)state.ehpad={};save();closeSheet();toast('Version précédente remise ✓');break}
     case 'syncOff':sync=null;saveSync();pulled=false;setSync('local');openData();break;
     case 'fab':if(tab==='urg')openUrgAdd();else openEditor(defaultSlot());break;
     case 'open':openDetails(a.dataset.type,a.dataset.k,a.dataset.id);break;
