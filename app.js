@@ -3,21 +3,47 @@ const START=6, END=24;
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
 const DSH=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MONTHS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
-const SHIFTS={
-  M70:{name:'Matin',segs:[['06:30','14:30']]},
-  C96:{name:'Coupé',segs:[['07:30','12:30'],['17:30','20:00']]},
-  S08:{name:'Soir',segs:[['12:30','20:00']]},
-  RHE:{name:'Repos',rest:1},
-  RF:{name:'Repos férié',rest:1},
-  RTP:{name:'Repos temps partiel',rest:1}
+// Un profil par personne. La clé 'ehpad' = le travail à postes (Adopt chez Clara) : gardée pour ne pas toucher aux données ni au CSS.
+// 'love' = temps ensemble : ces plages vont dans le fichier partagé du Gist.
+const PROFILS={
+  // cle = le jeton GitHub chiffré avec le mot de passe (« Mes données » → Créer mon mot de passe). Vide : le mot de passe est le jeton lui-même.
+  moi:{nom:'Lallou',cle:'',store:'zephir-state',file:'zephir.json',
+    SHIFTS:{
+      M70:{name:'Matin',segs:[['06:30','14:30']]},
+      C96:{name:'Coupé',segs:[['07:30','12:30'],['17:30','20:00']]},
+      S08:{name:'Soir',segs:[['12:30','20:00']]},
+      RHE:{name:'Repos',rest:1},
+      RF:{name:'Repos férié',rest:1},
+      RTP:{name:'Repos temps partiel',rest:1}
+    },
+    CATS:{
+      ehpad:{name:'EHPAD',color:'#7C9CFF'},
+      broflip:{name:'BroFlip',color:'#5FD4AE'},
+      love:{name:'Copine & chat',color:'#F0A0C0'},
+      other:{name:'Autres',color:'#E0B36A'}
+    },
+    PH:{broflip:'Ex : récup + annonces',love:'Ex : soirée en amoureux',other:'Ex : courses, ménage, sport'}},
+  clara:{nom:'Clara',cle:'',store:'zephir-state-clara',file:'zephir-clara.json',dimRepos:1,
+    SHIFTS:{
+      Aprem:{name:'Après-midi',segs:[['14:00','19:00']]},
+      'Journée':{name:'Matin + aprem',segs:[['10:00','12:30'],['14:00','19:00']]},
+      Continu:{name:'Sans pause',segs:[['10:00','18:30']]},
+      'Congé':{name:'Congé',rest:1},
+      'Férié':{name:'Férié',rest:1},
+      Repos:{name:'Repos',rest:1}
+    },
+    CATS:{
+      ehpad:{name:'Adopt',color:'#7C9CFF'},
+      love:{name:'Ensemble & chat',color:'#F0A0C0'},
+      other:{name:'Autres',color:'#E0B36A'}
+    },
+    PH:{love:'Ex : soirée en amoureux',other:'Ex : courses, ménage, sport'}}
 };
-const CATS={
-  ehpad:{name:'EHPAD',color:'#7C9CFF'},
-  broflip:{name:'BroFlip',color:'#5FD4AE'},
-  love:{name:'Copine & chat',color:'#F0A0C0'},
-  other:{name:'Autres',color:'#E0B36A'}
-};
-const PH={broflip:'Ex : récup + annonces',love:'Ex : soirée en amoureux',other:'Ex : courses, ménage, sport'};
+// renommage KairOs → ZEPHIR : une seule fois, on recopie les anciennes données 'kairos-…' en 'zephir-…' (les anciennes ne sont jamais effacées)
+try{if(!localStorage.getItem('zephir-migre')){for(const k of Object.keys(localStorage))if(k.startsWith('kairos-')&&localStorage.getItem('zephir-'+k.slice(7))===null)localStorage.setItem('zephir-'+k.slice(7),localStorage.getItem(k));localStorage.setItem('zephir-migre','1')}}catch(e){}
+let profil=null;try{profil=localStorage.getItem('zephir-profil')}catch(e){}
+if(!PROFILS[profil])profil=null; // pas encore connecté : page de connexion
+const P=PROFILS[profil||'moi'],{SHIFTS,CATS,PH}=P;
 const ICON_FS='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
 const ICON_EXIT='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
 
@@ -45,47 +71,68 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');
 function seed(){return {v:1,updatedAt:0,shifts:{},blocks:[],ehpad:{},urgent:[]}}
 function valid(s){return s&&typeof s==='object'&&s.shifts&&typeof s.shifts==='object'&&Array.isArray(s.blocks)&&Array.isArray(s.urgent)}
 let state=null;
-// ancienne clé 'odt-state' relue si 'kairos-state' n'existe pas encore (jamais effacée)
-try{state=JSON.parse(localStorage.getItem('kairos-state')||localStorage.getItem('odt-state'))}catch(e){}
+// ancienne clé 'odt-state' relue si 'zephir-state' n'existe pas encore (jamais effacée)
+try{state=JSON.parse(localStorage.getItem(P.store)||(P.store==='zephir-state'?localStorage.getItem('odt-state'):null))}catch(e){}
 if(!valid(state))state=seed();
 if(!state.ehpad)state.ehpad={};
-try{if(!localStorage.getItem('kairos-state'))persistLocal()}catch(e){}
+// plages « ensemble » : communes aux deux profils, { updatedAt, blocks, dirty = pas encore envoyé }
+let shared=null;try{shared=JSON.parse(localStorage.getItem('zephir-ensemble'))}catch(e){}
+if(!shared||!Array.isArray(shared.blocks))shared={updatedAt:0,blocks:[]};
+let sharedJSON=JSON.stringify(shared.blocks);
+sortBlocks();persistLocal();
 
-function persistLocal(){try{localStorage.setItem('kairos-state',JSON.stringify(state))}catch(e){setSync('err')}}
-function save(){state.updatedAt=Date.now();persistLocal();renderAll();schedulePush()}
+const allBlocks=()=>state.blocks.concat(shared.blocks);
+// range chaque plage au bon endroit (aussi les anciennes données où « Copine & chat » était dans state.blocks)
+function sortBlocks(){
+  const m=new Map();shared.blocks.concat(state.blocks).forEach(b=>m.set(b.id,b));
+  const all=[...m.values()];
+  state.blocks=all.filter(b=>b.cat!=='love');shared.blocks=all.filter(b=>b.cat==='love');
+  const j=JSON.stringify(shared.blocks);
+  if(j!==sharedJSON){sharedJSON=j;shared.updatedAt=Date.now();shared.dirty=true}
+}
+function persistLocal(){try{localStorage.setItem(P.store,JSON.stringify(state));localStorage.setItem('zephir-ensemble',JSON.stringify(shared))}catch(e){setSync('err')}}
+function save(){state.updatedAt=Date.now();sortBlocks();persistLocal();renderAll();schedulePush()}
 
 /* ---------- status dot ---------- */
 function setSync(s){const el=$('#sync');el.className='sync '+s;el.title={ok:'Synchronisé',loading:'Synchronisation…',err:'Synchro impossible pour le moment (réessai automatique)',auth:'Jeton GitHub refusé : reconnecte la synchro',local:'Sauvegarde sur cet appareil uniquement'}[s]||''}
 
 /* ---------- synchro en ligne (Gist GitHub privé) ---------- */
-// shortcut: le dernier appareil qui enregistre gagne (updatedAt) ; 2 appareils modifiés hors ligne en même temps → le plus ancien est écrasé (copie dans 'kairos-avant-synchro'). Passer à une fusion si ça arrive souvent.
-const GH='https://api.github.com',GFILE='kairos.json',GDESC='KairOs – sauvegarde (ne pas supprimer)';
-let sync=null;try{sync=JSON.parse(localStorage.getItem('kairos-sync'))}catch(e){}
+// shortcut: le dernier appareil qui enregistre gagne (updatedAt) ; 2 appareils modifiés hors ligne en même temps → le plus ancien est écrasé (copie dans 'zephir-avant-synchro'). Passer à une fusion si ça arrive souvent.
+// shortcut: les plages « ensemble » aussi : si vous modifiez tous les deux en même temps, la modif la plus récente gagne. Passer à une fusion plage par plage si ça arrive.
+// Un seul Gist pour les deux : un fichier par profil + 'zephir-ensemble.json'. Un PATCH ne touche que les fichiers envoyés.
+// Avant le renommage, les fichiers s'appelaient 'kairos…' : on les relit tant que les 'zephir…' n'existent pas (jamais effacés).
+const GH='https://api.github.com',GFILE=P.file,SFILE='zephir-ensemble.json',GDESC='ZEPHIR – sauvegarde (ne pas supprimer)',OLD_GDESC='KairOs – sauvegarde (ne pas supprimer)';
+let sync=null;try{sync=JSON.parse(localStorage.getItem('zephir-sync'))}catch(e){}
 let pulled=false,busy=false,pushT=null;
-function saveSync(){try{sync?localStorage.setItem('kairos-sync',JSON.stringify(sync)):localStorage.removeItem('kairos-sync')}catch(e){}}
+function saveSync(){try{sync?localStorage.setItem('zephir-sync',JSON.stringify(sync)):localStorage.removeItem('zephir-sync')}catch(e){}}
 const gh=(path,opt={})=>fetch(GH+path,{...opt,cache:'no-store',headers:{Authorization:'Bearer '+sync.token,Accept:'application/vnd.github+json'}})
   .then(r=>{if(!r.ok)throw r.status;return r.json()});
 async function findGist(){ // un autre appareil l'a peut-être déjà créé
-  for(let p=1;p<=5;p++){const l=await gh('/gists?per_page=100&page='+p);const g=l.find(x=>x.files&&x.files[GFILE]);if(g)return g.id;if(l.length<100)break}
+  for(let p=1;p<=5;p++){const l=await gh('/gists?per_page=100&page='+p);const g=l.find(x=>x.description===GDESC||x.description===OLD_GDESC||(x.files&&(x.files['zephir.json']||x.files['kairos.json'])));if(g)return g.id;if(l.length<100)break}
   return null;
 }
-async function readRemote(){
-  const f=(await gh('/gists/'+sync.gist)).files[GFILE];if(!f)return null;
+async function readFile(g,name,ok){
+  const f=g.files[name]||g.files[name.replace(/^zephir/,'kairos')];if(!f)return null;
   const d=JSON.parse(f.truncated?await fetch(f.raw_url,{cache:'no-store'}).then(r=>r.text()):f.content);
-  return valid(d)?d:null;
+  return ok(d)?d:null;
 }
 async function pull(first){
-  if(!sync||busy||(sheetCtx&&!first))return; // pas de remplacement pendant qu'une fiche est ouverte
+  if(!sync||!profil||busy||(sheetCtx&&!first))return; // pas de remplacement pendant qu'une fiche est ouverte
   busy=true;setSync('loading');
   try{
     if(!sync.gist){sync.gist=await findGist();saveSync()}
-    const r=sync.gist?await readRemote():null;
+    const g=sync.gist?await gh('/gists/'+sync.gist):null;
+    const r=g&&await readFile(g,GFILE,valid),rs=g&&await readFile(g,SFILE,d=>d&&Array.isArray(d.blocks));
+    let changed=false;
     if(r&&r.updatedAt>state.updatedAt){ // la version la plus récente gagne, jamais une version vide (updatedAt 0)
-      try{localStorage.setItem('kairos-avant-synchro',JSON.stringify(state))}catch(e){}
-      state=r;if(!state.ehpad)state.ehpad={};persistLocal();renderAll();
+      try{localStorage.setItem('zephir-avant-synchro',JSON.stringify(state))}catch(e){}
+      state=r;if(!state.ehpad)state.ehpad={};changed=true;
     }
+    if(rs&&rs.updatedAt>shared.updatedAt){shared=rs;sharedJSON=JSON.stringify(rs.blocks);changed=true}
+    else if(!rs&&shared.blocks.length)shared.dirty=true; // fichier partagé pas encore créé
+    if(changed){sortBlocks();persistLocal();renderAll()}
     pulled=true;busy=false;
-    if(!r||state.updatedAt>r.updatedAt)return push();
+    if(!r||state.updatedAt>r.updatedAt||shared.dirty)return push();
     setSync('ok');
   }catch(e){busy=false;setSync(e===401?'auth':'err')}
 }
@@ -94,9 +141,13 @@ async function push(){
   if(busy)return schedulePush();
   busy=true;setSync('loading');
   const body={description:GDESC,files:{[GFILE]:{content:JSON.stringify(state)}}};
+  // le fichier partagé n'est envoyé que s'il a changé ici, pour ne pas écraser une modif de l'autre
+  const sentAt=shared.dirty&&shared.updatedAt;
+  if(sentAt)body.files[SFILE]={content:JSON.stringify({updatedAt:shared.updatedAt,blocks:shared.blocks})};
   try{
     if(sync.gist)await gh('/gists/'+sync.gist,{method:'PATCH',body:JSON.stringify(body)});
     else{sync.gist=(await gh('/gists',{method:'POST',body:JSON.stringify({...body,public:false})})).id;saveSync()}
+    if(sentAt&&shared.updatedAt===sentAt){shared.dirty=false;persistLocal()}
     busy=false;setSync('ok');
   }catch(e){
     busy=false;
@@ -105,20 +156,46 @@ async function push(){
   }
 }
 // copie gardée avant une synchro ou un import ; on ne propose que celles qui contiennent quelque chose
-function backupOf(){for(const k of ['kairos-avant-synchro','kairos-avant-import']){try{const d=JSON.parse(localStorage.getItem(k));if(valid(d)&&(d.blocks.length||Object.keys(d.shifts).length||d.urgent.length))return d}catch(e){}}return null}
+function backupOf(){for(const k of ['zephir-avant-synchro','zephir-avant-import']){try{const d=JSON.parse(localStorage.getItem(k));if(valid(d)&&(d.blocks.length||Object.keys(d.shifts).length||d.urgent.length))return d}catch(e){}}return null}
 function schedulePush(){clearTimeout(pushT);pushT=setTimeout(push,1500)}
-async function connect(token){
+async function checkToken(token){
   sync={token};
-  try{await gh('/gists?per_page=1')}catch(e){sync=null;$('#syncErr').textContent=e===401?'Jeton refusé par GitHub.':e===403?"Ce jeton n'a pas le droit « Gists ».":'Connexion à GitHub impossible.';return}
-  saveSync();pulled=false;await pull(true);closeSheet();toast('Synchro activée ✓');
+  try{await gh('/gists?per_page=1');saveSync();return true}catch(e){sync=null;$('#syncErr').textContent=e===401?'Jeton refusé par GitHub.':e===403?"Ce jeton n'a pas le droit « Gists ».":'Connexion à GitHub impossible.';return false}
+}
+async function connect(token){
+  if(!await checkToken(token))return;
+  pulled=false;await pull(true);closeSheet();toast('Synchro activée ✓');
+}
+/* mot de passe : le jeton chiffré en AES-GCM, clé tirée du mot de passe (PBKDF2). Format de cle : base64(sel 16 | iv 12 | chiffré) */
+const b64=u=>btoa(String.fromCharCode(...u)),unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function keyFrom(pw,salt){
+  const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:600000,hash:'SHA-256'},k,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function lock(token,pw){
+  const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));
+  const c=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await keyFrom(pw,salt),new TextEncoder().encode(token)));
+  return b64(new Uint8Array([...salt,...iv,...c]));
+}
+async function unlock(cle,pw){ // null si mauvais mot de passe
+  try{const d=unb64(cle);return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:d.slice(16,28)},await keyFrom(pw,d.slice(0,16)),d.slice(28)))}catch(e){return null}
+}
+async function login(nom,pw){
+  const p=Object.keys(PROFILS).find(id=>PROFILS[id].nom.toLowerCase()===nom.trim().toLowerCase());
+  if(!p){$('#syncErr').textContent='Prénom inconnu.';return}
+  let token=pw;
+  if(pw&&PROFILS[p].cle){$('#syncErr').textContent='';token=await unlock(PROFILS[p].cle,pw);if(!token){$('#syncErr').textContent='Mot de passe incorrect.';return}}
+  if(token&&!await checkToken(token))return;
+  try{localStorage.setItem('zephir-profil',p)}catch(e){}
+  location.reload(); // tout repart avec les catégories et les données du profil choisi
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull()});
 window.addEventListener('online',()=>pull());
 
 /* ---------- export / import ---------- */
 function exportData(){
-  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='kairos-sauvegarde-'+key(new Date())+'.json';
+  const blob=new Blob([JSON.stringify({...state,blocks:allBlocks()},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='zephir-sauvegarde-'+key(new Date())+'.json';
   document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   toast('Sauvegarde téléchargée');
 }
@@ -128,7 +205,7 @@ function readImport(file){
   r.onload=()=>{
     let d=null;try{d=JSON.parse(r.result)}catch(e){}
     if(d&&d.state&&!d.shifts)d=d.state; // format de la base Claude : {state:{…}}
-    if(!valid(d)){$('#impErr').textContent="Ce fichier n'est pas une sauvegarde KairOs / ODT.";return}
+    if(!valid(d)){$('#impErr').textContent="Ce fichier n'est pas une sauvegarde ZEPHIR.";return}
     importing=d;
     $('#impInfo').innerHTML=`Fichier : <b>${Object.keys(d.shifts).length}</b> postes, <b>${d.blocks.length}</b> plages, <b>${d.urgent.length}</b> urgents.<br>Il va <b>remplacer</b> les données de cet appareil.`;
     $('#impGo').hidden=false;$('#impErr').textContent='';
@@ -137,7 +214,7 @@ function readImport(file){
 }
 function applyImport(){
   if(!importing)return;
-  try{localStorage.setItem('kairos-avant-import',JSON.stringify(state))}catch(e){} // filet de sécurité
+  try{localStorage.setItem('zephir-avant-import',JSON.stringify(state))}catch(e){} // filet de sécurité
   state=JSON.parse(JSON.stringify(importing));importing=null;
   if(!state.ehpad)state.ehpad={};
   delete state.imports;
@@ -156,19 +233,28 @@ function openData(){
     :`<p class="meta">Colle ton jeton GitHub (droit « Gists » seulement), le même sur chaque appareil. La version la plus récente (en ligne ou sur cet appareil) est gardée, l'autre est mise de côté.</p>
     <form class="addrow" data-form="syncOn"><input name="t" type="password" placeholder="github_pat_…" autocomplete="off"><button>Connecter</button></form>`}
     <div class="err" id="syncErr"></div>
+    ${sync?`<h2 style="margin-top:22px">Mot de passe</h2><p class="meta">Choisis ton mot de passe pour te connecter (10 caractères minimum). La ligne obtenue est à mettre dans l'appli à côté de ton prénom.</p>
+    <form class="addrow" data-form="mkPw"><input name="a" type="password" placeholder="Mot de passe" minlength="10" autocomplete="new-password" required><input name="b" type="password" placeholder="Encore une fois" autocomplete="new-password" required><button>Créer</button></form>
+    <div class="err" id="pwErr"></div><input class="inp" id="pwOut" readonly hidden style="margin-top:10px">`:''}
+    <div class="sh-foot"><button class="btn ghost" data-act="logout">Changer de profil (${esc(P.nom)})</button></div>
     ${backupOf()?`<div class="sh-foot"><button class="btn ghost" data-act="restore">↺ Revenir à la version d'avant (${backupOf().blocks.length} plages)</button></div>`:''}`,{kind:'data'});
 }
 
 /* ---------- planning ---------- */
 let curMon=mondayOf(new Date());
 let tab='plan';
+// poste du jour : un code de SHIFTS, ou des heures du jour 'HH:MM-HH:MM' ; dimanche = Repos si rien n'est mis (profil dimRepos)
+const codeOf=k=>state.shifts[k]||(P.dimRepos&&parse(k).getDay()===0?'Repos':'');
+const isHours=c=>/^\d\d:\d\d-\d\d:\d\d$/.test(c||'');
+const shOf=c=>SHIFTS[c]||(isHours(c)?{name:'Heures du jour',segs:[c.split('-')]}:null);
+const codeLbl=c=>isHours(c)?hfmt(t2m(c.slice(0,5)))+'-'+hfmt(endMin(c.slice(6))):c;
 
 function itemsForDay(k){
   const out=[];
-  const code=state.shifts[k],sh=SHIFTS[code];
+  const code=codeOf(k),sh=shOf(code);
   const ex=state.ehpad[k]||{};
-  if(sh&&sh.segs)sh.segs.forEach(s=>out.push({type:'ehpad',cat:'ehpad',date:k,s:t2m(s[0]),e:t2m(s[1]),title:'EHPAD',code,imp:!!ex.imp,tasks:ex.tasks||[]}));
-  state.blocks.filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:b.cat,id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.title||CATS[b.cat].name,imp:!!b.imp,tasks:b.tasks||[]}));
+  if(sh&&sh.segs)sh.segs.forEach(s=>out.push({type:'ehpad',cat:'ehpad',date:k,s:t2m(s[0]),e:endMin(s[1]),title:CATS.ehpad.name,code,imp:!!ex.imp,tasks:ex.tasks||[]}));
+  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:b.cat,id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.title||CATS[b.cat].name,imp:!!b.imp,tasks:b.tasks||[]}));
   return out.sort((a,b)=>a.s-b.s||b.e-a.e);
 }
 function layout(items){
@@ -195,8 +281,8 @@ function renderPlan(){
   const d1=days[0],d7=days[6];
   $('#wkLabel').textContent=d1.getDate()+(d1.getMonth()!==d7.getMonth()?' '+MONTHS[d1.getMonth()]:'')+' – '+d7.getDate()+' '+MONTHS[d7.getMonth()]+' '+d7.getFullYear();
   const head='<div></div>'+days.map((d,i)=>{
-    const k=key(d),c=state.shifts[k],sh=SHIFTS[c];
-    const chip=c?`<span class="chip ${sh&&sh.rest?'rest':'work'}">${sh&&sh.rest?'Repos':esc(c)}</span>`:'<span class="chip none">—</span>';
+    const k=key(d),c=codeOf(k),sh=shOf(c);
+    const chip=c?`<span class="chip ${sh&&sh.rest?'rest':'work'}">${sh&&sh.rest?'Repos':esc(codeLbl(c))}</span>`:'<span class="chip none">—</span>';
     return `<button class="dh${k===tk?' is-today':''}" data-act="shift" data-k="${k}"><span class="dn">${DSH[i]}</span><span class="dd">${d.getDate()}</span>${chip}</button>`;
   }).join('');
   let times='';for(let h=START;h<END;h++)times+=`<div class="tl" style="top:calc(${h-START} * var(--h))">${h}h</div>`;
@@ -214,7 +300,7 @@ function renderPlan(){
 /* hours panel */
 function renderStats(){
   const days=weekDays();
-  const t={ehpad:0,broflip:0,love:0,other:0};
+  const t=Object.fromEntries(Object.keys(CATS).map(c=>[c,0]));
   days.forEach(d=>itemsForDay(key(d)).forEach(it=>t[it.cat]+=it.e-it.s));
   const tot=Object.values(t).reduce((a,b)=>a+b,0);
   $('#pStats').innerHTML=`<h3><span>Heures de la semaine</span><em>${dur(tot)}</em></h3>
@@ -229,7 +315,7 @@ function renderNow(){
   const cur=items.filter(it=>it.s<=nm&&nm<it.e);
   let next=items.find(it=>it.s>nm),nextDay='';
   if(!next){for(let i=1;i<=7&&!next;i++){const k=key(addDays(now,i)),its=itemsForDay(k);if(its.length){next=its[0];nextDay=i===1?'Demain':DAYS[(addDays(now,i).getDay()+6)%7]}}}
-  const row=(it,lbl)=>`<button class="nrow" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}"><i style="background:${CATS[it.cat].color}"></i><div><small>${lbl}</small><b>${it.imp?'<span class="impdot"></span>':''}${esc(it.type==='ehpad'?'EHPAD · '+it.code:it.title)}</b></div><span>${hfmt(it.s)}–${hfmt(it.e)}</span></button>`;
+  const row=(it,lbl)=>`<button class="nrow" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}"><i style="background:${CATS[it.cat].color}"></i><div><small>${lbl}</small><b>${it.imp?'<span class="impdot"></span>':''}${esc(it.type==='ehpad'?CATS.ehpad.name+' · '+codeLbl(it.code):it.title)}</b></div><span>${hfmt(it.s)}–${hfmt(it.e)}</span></button>`;
   let html='<h3><span>Maintenant</span></h3><div class="nowc">';
   html+=cur.length?cur.map(it=>row(it,'En cours')).join(''):'<div class="nrow free">Temps libre</div>';
   if(next)html+=row(next,nextDay?'Ensuite · '+nextDay:'Ensuite');
@@ -304,15 +390,15 @@ function closeSheet(){sheetCtx=null;$('#sheet').classList.remove('on');$('#ov').
 
 function refOf(type,k,id,create){
   if(type==='ehpad'){if(!state.ehpad[k]){if(!create)return{imp:false,tasks:[]};state.ehpad[k]={imp:false,tasks:[]}}return state.ehpad[k]}
-  return state.blocks.find(b=>b.id===id);
+  return allBlocks().find(b=>b.id===id);
 }
 function openDetails(type,k,id,focus){
   const ref=refOf(type,k,id,false);if(!ref)return closeSheet();
   let cat,title,time;
   if(type==='ehpad'){
-    const c=state.shifts[k],sh=SHIFTS[c];if(!sh||!sh.segs)return closeSheet();
-    cat='ehpad';title=`EHPAD · ${c} (${sh.name})`;
-    time=sh.segs.map(s=>hfmt(t2m(s[0]))+' – '+hfmt(t2m(s[1]))).join(' et ');
+    const c=codeOf(k),sh=shOf(c);if(!sh||!sh.segs)return closeSheet();
+    cat='ehpad';title=`${CATS.ehpad.name} · ${codeLbl(c)} (${sh.name})`;
+    time=sh.segs.map(s=>hfmt(t2m(s[0]))+' – '+hfmt(endMin(s[1]))).join(' et ');
   }else{cat=ref.cat;title=ref.title||CATS[cat].name;time=hfmt(t2m(ref.start))+' – '+hfmt(endMin(ref.end))}
   const tasks=ref.tasks||[],done=tasks.filter(t=>t.done).length;
   const html=`<div class="sh-head"><span class="tag t-${cat}">${CATS[cat].name}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
@@ -327,11 +413,12 @@ function openDetails(type,k,id,focus){
 }
 
 function openEditor(opts){
-  const b=opts.id?state.blocks.find(x=>x.id===opts.id):null;
-  const v=b?{...b}:{cat:'broflip',title:'',date:opts.date,start:opts.start,end:opts.end,imp:false};
+  const b=opts.id?allBlocks().find(x=>x.id===opts.id):null;
+  const bc=Object.keys(CATS).filter(c=>c!=='ehpad');
+  const v=b?{...b}:{cat:bc[0],title:'',date:opts.date,start:opts.start,end:opts.end,imp:false};
   const mon=mondayOf(parse(v.date));
   const dayOpts=[...Array(7)].map((_,i)=>{const k=key(addDays(mon,i));return `<option value="${k}"${k===v.date?' selected':''}>${dayLabel(k)}</option>`}).join('');
-  const pills=['broflip','love','other'].map(c=>`<label><input type="radio" name="cat" value="${c}"${v.cat===c?' checked':''}><span class="pill"><i style="background:${CATS[c].color}"></i>${CATS[c].name}</span></label>`).join('');
+  const pills=bc.map(c=>`<label><input type="radio" name="cat" value="${c}"${v.cat===c?' checked':''}><span class="pill"><i style="background:${CATS[c].color}"></i>${CATS[c].name}</span></label>`).join('');
   const html=`<div class="sh-head"><span class="tag t-${v.cat}" id="edTag">${b?'Modifier la plage':'Nouvelle plage'}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <form data-form="saveBlock">
       <div class="field"><span class="lbl">Catégorie</span><div class="pills">${pills}</div></div>
@@ -346,12 +433,15 @@ function openEditor(opts){
 }
 
 function openShift(k){
-  const cur=state.shifts[k]||'';
+  const cur=codeOf(k),hrs=isHours(cur)?cur.split('-'):['',''];
   const btn=(code)=>{const s=SHIFTS[code];const sub=s.segs?s.segs.map(x=>hfmt(t2m(x[0]))+'–'+hfmt(t2m(x[1]))).join(' / '):'Pas de travail';
-    return `<button class="shb ${s.segs?'work':''}${cur===code?' on':''}" data-act="setShift" data-k="${k}" data-code="${code}"><b>${code}</b><small>${s.name} · ${sub}</small></button>`};
-  const html=`<div class="sh-head"><span class="tag t-ehpad">Poste EHPAD</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
+    return `<button class="shb ${s.segs?'work':''}${cur===code?' on':''}" data-act="setShift" data-k="${k}" data-code="${esc(code)}"><b>${esc(code)}</b><small>${s.name} · ${sub}</small></button>`};
+  const html=`<div class="sh-head"><span class="tag t-ehpad">Poste ${esc(CATS.ehpad.name)}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <h2>${dayLabel(k)}</h2><p class="meta">Choisis ton poste pour ce jour.</p>
-    <div class="shgrid">${Object.keys(SHIFTS).map(btn).join('')}<button class="shb wide${!cur?' on':''}" data-act="setShift" data-k="${k}" data-code="">Pas encore connu</button></div>`;
+    <div class="shgrid">${Object.keys(SHIFTS).map(btn).join('')}<button class="shb wide${!cur?' on':''}" data-act="setShift" data-k="${k}" data-code="">Pas encore connu</button></div>
+    <p class="meta" style="margin-top:14px">Autres heures ce jour-là :</p>
+    <form class="addrow" data-form="setHours"><input type="time" name="s" step="900" value="${hrs[0]}" required><input type="time" name="e" step="900" value="${hrs[1]}" required><button>OK</button></form>
+    <div class="err" id="hrsErr"></div>`;
   openSheet(html,{kind:'shift',k});
 }
 
@@ -409,6 +499,7 @@ document.addEventListener('click',e=>{
     case 'syncNow':closeSheet();pull();break;
     case 'restore':{const b=backupOf();if(!b)break;state=b;if(!state.ehpad)state.ehpad={};save();closeSheet();toast('Version précédente remise ✓');break}
     case 'syncOff':sync=null;saveSync();pulled=false;setSync('local');openData();break;
+    case 'logout':try{localStorage.removeItem('zephir-profil')}catch(e){}location.reload();break;
     case 'fab':if(tab==='urg')openUrgAdd();else openEditor(defaultSlot());break;
     case 'open':openDetails(a.dataset.type,a.dataset.k,a.dataset.id);break;
     case 'shift':openShift(a.dataset.k);break;
@@ -419,7 +510,7 @@ document.addEventListener('click',e=>{
     case 'edit':if(c&&c.id)openEditor({id:c.id});break;
     case 'delBlock':{
       if(!a.classList.contains('armed')){a.classList.add('armed');a.textContent='Confirmer ?';setTimeout(()=>{if(a.isConnected){a.classList.remove('armed');a.textContent='Supprimer'}},3000);break}
-      state.blocks=state.blocks.filter(b=>b.id!==c.id);save();closeSheet();break}
+      state.blocks=state.blocks.filter(b=>b.id!==c.id);shared.blocks=shared.blocks.filter(b=>b.id!==c.id);save();closeSheet();break}
     case 'ckUrg':{const u=state.urgent.find(x=>x.id===a.dataset.id);if(u){u.done=!u.done;u.doneAt=Date.now();save()}break}
     case 'delUrg':state.urgent=state.urgent.filter(x=>x.id!==a.dataset.id);save();break;
     case 'clearUrg':state.urgent=state.urgent.filter(x=>!x.done);save();break;
@@ -450,12 +541,25 @@ document.addEventListener('submit',e=>{
       if(endMin(end)<=t2m(start)){$('#edErr').textContent="L'heure de fin doit être après l'heure de début.";return}
       const data={cat:fd.get('cat')||'other',title:String(fd.get('title')||'').trim(),date:fd.get('date'),start,end,imp:!!fd.get('imp')};
       let id=c&&c.id;
-      if(id){Object.assign(state.blocks.find(b=>b.id===id)||{},data)}
+      if(id){Object.assign(allBlocks().find(b=>b.id===id)||{},data)}
       else{id=uid();state.blocks.push({id,...data,tasks:[]})}
       const wk=mondayOf(parse(data.date));if(key(wk)!==key(curMon))curMon=wk;
       save();openDetails('block',data.date,id);break;
     }
     case 'syncOn':{const t=f.t.value.trim();if(t)connect(t);break}
+    case 'login':login(f.nom.value,f.t&&f.t.value.trim());break;
+    case 'mkPw':{
+      if(f.a.value!==f.b.value){$('#pwErr').textContent='Les deux mots de passe ne sont pas pareils.';return}
+      $('#pwErr').textContent='';
+      lock(sync.token,f.a.value).then(cle=>{const o=$('#pwOut');o.value=cle;o.hidden=false;o.select();
+        navigator.clipboard&&navigator.clipboard.writeText(cle).then(()=>toast('Ligne copiée ✓'),()=>{})});
+      break;
+    }
+    case 'setHours':{
+      const s=f.s.value,en=f.e.value;
+      if(!s||!en||endMin(en)<=t2m(s)){$('#hrsErr').textContent="L'heure de fin doit être après l'heure de début.";return}
+      state.shifts[c.k]=s+'-'+en;save();closeSheet();break;
+    }
     case 'addUrg':{
       const txt=f.t.value.trim();if(!txt)return;
       state.urgent.push({id:uid(),text:txt,done:false,at:Date.now()});save();closeSheet();break;
@@ -486,7 +590,10 @@ document.fonts&&document.fonts.ready&&document.fonts.ready.then(fitHeight);
 setTimeout(()=>$('#splash').classList.add('out'),2200);
 setInterval(tickClock,1000);
 setInterval(()=>{if(!sheetCtx){renderPlan();renderNow()}},60000);
-setSync('local');pull();
+setSync('local');
+// page de connexion sous l'écran de lancement : visible quand il s'efface, retirée si déjà connecté (et son #syncErr avec)
+if(profil){$('#login').remove();pull()}
+else{$('#login .logo').innerHTML=$('#splash .logo').innerHTML;if(sync)$('#login [name=t]').remove()}
 })();
 
 /* ---------- mode hors connexion (PWA) ---------- */

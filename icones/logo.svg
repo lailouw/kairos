@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 416 100" role="img" aria-label="Zephir">
-  <!-- Logo Zephir « Vague » : un cercle coupé par une vague (le vent qui passe sur le temps). Pour fond sombre. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 416 100" role="img" aria-label="ZEPHIR">
+  <!-- Logo ZEPHIR « Vague » : un cercle coupé par une vague (le vent qui passe sur le temps). Pour fond sombre. -->
   <defs><clipPath id="zc"><circle cx="50" cy="50" r="40"/></clipPath></defs>
   <circle cx="50" cy="50" r="40" fill="#7C9CFF"/>
   <path clip-path="url(#zc)" fill="#ECEEF2" d="M8 50C22 36 36 36 50 50S78 64 92 50V0H8Z"/>

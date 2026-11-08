@@ -1,6 +1,6 @@
 {
-  "name": "KairOs – Optimisateur de temps",
-  "short_name": "KairOs",
+  "name": "ZEPHIR – Optimisateur de temps",
+  "short_name": "ZEPHIR",
   "description": "Mon planning de la semaine : EHPAD, BroFlip et vie perso.",
   "lang": "fr",
   "start_url": "./",

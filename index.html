@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>KairOs – Optimisateur de temps</title>
+<title>ZEPHIR – Optimisateur de temps</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0B0D12">
 <link rel="icon" type="image/png" href="icones/icone-192.png">
 <link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="KairOs">
+<meta name="apple-mobile-web-app-title" content="ZEPHIR">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,16 +23,26 @@
 <div id="splash" data-act="enter">
   <div class="rings"><i></i><i></i><i></i></div>
   <div class="splash-in">
-    <div class="logo"><span>Kai</span><span>r</span><span>Os</span></div>
+    <div class="logo"><span>ZE</span><span>PH</span><span>IR</span></div>
     <div class="tagline">Optimisateur de temps</div>
     <div class="underline"></div>
   </div>
   <div class="tap">Touchez pour entrer</div>
 </div>
 
+<div id="login">
+  <form class="login-in" data-form="login">
+    <div class="logo"></div>
+    <input class="inp" name="nom" placeholder="Prénom" autocomplete="username" required>
+    <input class="inp" name="t" type="password" placeholder="Mot de passe" autocomplete="current-password" required>
+    <div class="err" id="syncErr"></div>
+    <button class="btn">Se connecter</button>
+  </form>
+</div>
+
 <div id="app">
   <header class="top" id="top">
-    <button class="brand" data-act="data" title="Mes données (exporter / importer)" aria-label="Mes données"><b>Kai</b><b>r</b><b>Os</b><span class="sync" id="sync"></span></button>
+    <button class="brand" data-act="data" title="Mes données (exporter / importer)" aria-label="Mes données"><b>ZEPHIR</b><span class="sync" id="sync"></span></button>
     <div class="wk" id="wkNav">
       <button class="ibtn" data-act="prev" aria-label="Semaine précédente">‹</button>
       <div id="wkLabel"></div>
@@ -55,7 +65,7 @@
     <div class="card glass" id="pNow"></div>
     <div class="card glass" id="pStats"></div>
     <div class="card glass urgc" id="pUrg"></div>
-    <p class="hint">Touche un jour pour changer ton poste EHPAD. Touche une case vide pour ajouter une plage. Touche une plage pour voir ce que tu as à faire.</p>
+    <p class="hint">Touche un jour pour changer ton poste. Touche une case vide pour ajouter une plage. Touche une plage pour voir ce que tu as à faire.</p>
   </aside>
 </div>
 

@@ -1,4 +1,4 @@
-// Génère les icônes PNG de Zephir (« Vague » : cercle coupé par une vague) sans dépendance.
+// Génère les icônes PNG de ZEPHIR (« Vague » : cercle coupé par une vague) sans dépendance.
 // Lancer depuis C:\KairOs :  node outils/icones.js
 const fs = require('fs'), zlib = require('zlib'), path = require('path');
 
