@@ -221,16 +221,19 @@ async function pull(first){
         if(rs&&gid.split('_').some(id=>pubOf(id)&&!keys[id]))p.dirty=true; // un membre à ajouter
         // clé reçue (ou changée) : on réunit les plages d'ici et celles en ligne, sans rien perdre
         if(rs&&cles.ks[gid]!==k0&&Array.isArray(rs.blocks)){const m=new Map(rs.blocks.map(x=>[x.id,x]));p.blocks.forEach(x=>m.set(x.id,x));
-          rs={updatedAt:Date.now(),blocks:[...m.values()]};if(p.blocks.length)p.dirty=true}
+          rs={updatedAt:Date.now(),blocks:[...m.values()],subs:rs.subs};if(p.blocks.length)p.dirty=true}
       }else{
         gKeys[gid]={};if(!p.updatedAt)rs=await ancien(name);
         if(!cles.ks[gid])cles.ks[gid]=b64(rnd(32));
         gOk[gid]=true;if(p.blocks.length||rs)p.dirty=true;
       }
-      if(rs&&Array.isArray(rs.blocks)&&rs.updatedAt>p.updatedAt){parts[gid]={updatedAt:rs.updatedAt,blocks:rs.blocks,dirty:p.dirty};sjson[gid]=JSON.stringify(rs.blocks);changed=true}
+      if(rs&&Array.isArray(rs.blocks)&&rs.updatedAt>p.updatedAt){parts[gid]={updatedAt:rs.updatedAt,blocks:rs.blocks,subs:rs.subs,dirty:p.dirty};sjson[gid]=JSON.stringify(rs.blocks);changed=true}
+      // mon abonnement aux notifications doit être dans le fichier du groupe (il a pu être écrasé par la version d'un autre)
+      const q=parts[gid];if(gOk[gid]&&monAbo&&JSON.stringify((q.subs||{})[ME])!==monAbo){q.subs={...q.subs,[ME]:JSON.parse(monAbo)};q.updatedAt=Date.now();q.dirty=true;changed=true}
     }
     saveCles();
     if(changed){sortBlocks();persistLocal();renderAll()}
+    notifierNouveaux();
     pulled=true;busy=false;
     if(!f||!r||state.updatedAt>r.updatedAt||Object.keys(parts).some(gid=>gOk[gid]&&parts[gid].dirty))return push();
     setSync(allOk()?'ok':'attente');
@@ -250,13 +253,13 @@ async function push(){
       const kRaw=unb64(k),keys={...gKeys[gid]};
       for(const id of gid.split('_')){const pk=pubOf(id);if(pk)keys[id]=await wrapFor(pk,kRaw)}
       gKeys[gid]=keys;
-      body.files[fileOf(gid)]={content:JSON.stringify({v:2,keys,...await seal(await aesKey(k),{updatedAt:p.updatedAt,blocks:p.blocks})})};
+      body.files[fileOf(gid)]={content:JSON.stringify({v:2,keys,...await seal(await aesKey(k),{updatedAt:p.updatedAt,blocks:p.blocks,subs:p.subs})})};
       envois.push([gid,p.updatedAt]);
     }
     if(sync.g2)await gh('/gists/'+sync.g2,{method:'PATCH',body:JSON.stringify(body)});
     else{sync.g2=(await gh('/gists',{method:'POST',body:JSON.stringify({...body,public:false})})).id;saveSync()}
     envois.forEach(([gid,at])=>{if(parts[gid].updatedAt===at)parts[gid].dirty=false});if(envois.length)persistLocal();
-    busy=false;setSync(allOk()?'ok':'attente');
+    busy=false;setSync(allOk()?'ok':'attente');envoyerNotifs();
   }catch(e){
     busy=false;
     if(e===404){sync.g2=null;saveSync();return push()} // gist supprimé : on en recrée un
@@ -303,6 +306,49 @@ async function login(nom,pw){
   location.reload(); // tout repart avec les catégories et les données du profil choisi
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull()});
+setInterval(()=>pull(),120000); // pour recevoir les nouvelles plages partagées pendant que l'appli est ouverte
+
+/* ---------- notification des nouvelles plages partagées ---------- */
+// Deux chemins, même tag (= id de la plage) donc jamais deux fois la même notif :
+// 1. Web Push (appli fermée) : à la création, l'appli de l'auteur envoie au serveur push/worker.js l'abonnement de chaque autre membre
+//    (rangé chiffré dans le fichier du groupe, parts[gid].subs) ; le serveur le transmet au téléphone.
+// 2. à la synchro (appli ouverte) : rattrape le tout premier partage d'un groupe, quand les abonnements ne sont pas encore connus.
+const PUSH_URL='https://zephir-push.lallou-w9.workers.dev',VAPID_PUB='BA8OvB8_K_aRLSOuR_pK5I_mpw4JIEs0Y7-8taX4r-Vh2nfFb8zeZ3xIrdGALzrw_vCMgOBqjRxo3pJBiFCvDLQ'; // PUSH_URL : adresse du Worker une fois déployé
+const VSTORE='zephir-vus-'+ME;
+let vus=null;try{vus=JSON.parse(localStorage.getItem(VSTORE))}catch(e){}
+let monAbo=null;try{monAbo=localStorage.getItem('zephir-abo')}catch(e){}
+let aNotifier=[]; // plages partagées créées ici, à annoncer une fois envoyées en ligne
+function texteNotif(b){
+  const quand=parse(b.date).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+  return `${PROFILS[b.par].nom} a créé un évènement partagé : ${b.title||CATS[catOf(b.cat)].name}, ${quand} à ${b.start}`;
+}
+function notifierNouveaux(){
+  const recus=Object.values(parts).flatMap(p=>p.blocks);
+  if(vus){const vu=new Set(vus); // première fois sur cet appareil : on note juste ce qui existe déjà
+    recus.filter(b=>!vu.has(b.id)&&b.par&&b.par!==ME&&PROFILS[b.par]).forEach(b=>{
+      if('Notification' in window&&Notification.permission==='granted')navigator.serviceWorker.ready.then(r=>r.showNotification('ZEPHIR',{body:texteNotif(b),tag:b.id,icon:'icones/icone-192.png'})).catch(()=>{});
+    })}
+  vus=recus.map(b=>b.id);try{localStorage.setItem(VSTORE,JSON.stringify(vus))}catch(e){}
+}
+function envoyerNotifs(){
+  if(!PUSH_URL)return;
+  for(const id of aNotifier.splice(0)){
+    const b=allBlocks().find(x=>x.id===id);if(!b||!b.qui)continue;
+    const subs=(parts[b.qui.join('_')]||{}).subs||{};
+    b.qui.filter(q=>q!==ME&&subs[q]).forEach(q=>fetch(PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sub:subs[q],data:{title:'ZEPHIR',body:texteNotif(b),tag:b.id}})}).catch(()=>{}));
+  }
+}
+async function abonner(){ // abonnement de cet appareil ; rangé ensuite dans les fichiers de groupe par pull()
+  if(!PUSH_URL||!('PushManager' in window)||Notification.permission!=='granted')return;
+  try{
+    const r=await navigator.serviceWorker.ready;
+    const s=await r.pushManager.getSubscription()||await r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:unb64(VAPID_PUB.replace(/-/g,'+').replace(/_/g,'/'))});
+    const j=JSON.stringify(s);if(j!==monAbo){monAbo=j;try{localStorage.setItem('zephir-abo',j)}catch(e){}pull()}
+  }catch(e){}
+}
+// la permission doit être demandée après un geste (obligatoire sur iPhone)
+if('Notification' in window){if(Notification.permission==='default')document.addEventListener('click',()=>Notification.requestPermission().then(abonner).catch(()=>{}),{once:true});else abonner()}
 window.addEventListener('online',()=>pull());
 
 /* ---------- export / import ---------- */
@@ -666,7 +712,7 @@ document.addEventListener('submit',e=>{
       const data={cat:fd.get('cat')||(old&&old.cat)||'other',qui:[ME,...fd.getAll('qui')].sort(),title:String(fd.get('title')||'').trim(),date:fd.get('date'),start,end,imp:!!fd.get('imp')};
       let id=c&&c.id;
       if(id){Object.assign(old||{},data)}
-      else{id=uid();state.blocks.push({id,...data,tasks:[]})}
+      else{id=uid();state.blocks.push({id,...data,par:ME,tasks:[]});if(data.qui.length>1)aNotifier.push(id)} // par : qui l'a créée (pour la notification des autres)
       const wk=mondayOf(parse(data.date));if(key(wk)!==key(curMon))curMon=wk;
       save();openDetails('block',data.date,id);break;
     }

@@ -1,6 +1,6 @@
 // Mode hors connexion : l'appli est gardée en cache sur l'appareil.
 // À chaque nouvelle version mise en ligne, changer ce numéro.
-const CACHE = 'zephir-v11';
+const CACHE = 'zephir-v13';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
   'icones/icone-192.png', 'icones/icone-512.png', 'icones/apple-touch-icon.png', 'icones/zephir.jpg'];
 
@@ -30,4 +30,17 @@ self.addEventListener('fetch', e => {
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || (req.mode === 'navigate' ? caches.match('index.html') : undefined)))
   );
+});
+
+// Notification envoyée par le serveur (push/worker.js), même si l'appli est fermée.
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data.json(); } catch (err) {}
+  e.waitUntil(self.registration.showNotification(d.title || 'ZEPHIR', { body: d.body || '', tag: d.tag || undefined, icon: 'icones/icone-192.png' }));
+});
+
+// Toucher une notification ouvre l'appli (ou la remet devant).
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window' }).then(l => l.length ? l[0].focus() : self.clients.openWindow('./')));
 });
