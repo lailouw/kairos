@@ -52,11 +52,66 @@ if(!state.ehpad)state.ehpad={};
 try{if(!localStorage.getItem('kairos-state'))persistLocal()}catch(e){}
 
 function persistLocal(){try{localStorage.setItem('kairos-state',JSON.stringify(state))}catch(e){setSync('err')}}
-function save(){state.updatedAt=Date.now();persistLocal();renderAll()}
+function save(){state.updatedAt=Date.now();persistLocal();renderAll();schedulePush()}
 
 /* ---------- status dot ---------- */
-// shortcut: seulement « local » pour l'instant, la synchro en ligne viendra à l'étape 6
-function setSync(s){const el=$('#sync');el.className='sync '+s;el.title={ok:'Sauvegardé',loading:'Chargement…',err:'Sauvegarde impossible pour le moment',local:'Sauvegarde sur cet appareil uniquement',slow:'Connexion lente…'}[s]||''}
+function setSync(s){const el=$('#sync');el.className='sync '+s;el.title={ok:'Synchronisé',loading:'Synchronisation…',err:'Synchro impossible pour le moment (réessai automatique)',auth:'Jeton GitHub refusé : reconnecte la synchro',local:'Sauvegarde sur cet appareil uniquement'}[s]||''}
+
+/* ---------- synchro en ligne (Gist GitHub privé) ---------- */
+// shortcut: le dernier appareil qui enregistre gagne (updatedAt) ; 2 appareils modifiés hors ligne en même temps → le plus ancien est écrasé (copie dans 'kairos-avant-synchro'). Passer à une fusion si ça arrive souvent.
+const GH='https://api.github.com',GFILE='kairos.json',GDESC='KairOs – sauvegarde (ne pas supprimer)';
+let sync=null;try{sync=JSON.parse(localStorage.getItem('kairos-sync'))}catch(e){}
+let pulled=false,busy=false,pushT=null;
+function saveSync(){try{sync?localStorage.setItem('kairos-sync',JSON.stringify(sync)):localStorage.removeItem('kairos-sync')}catch(e){}}
+const gh=(path,opt={})=>fetch(GH+path,{...opt,cache:'no-store',headers:{Authorization:'Bearer '+sync.token,Accept:'application/vnd.github+json'}})
+  .then(r=>{if(!r.ok)throw r.status;return r.json()});
+async function findGist(){ // un autre appareil l'a peut-être déjà créé
+  for(let p=1;p<=5;p++){const l=await gh('/gists?per_page=100&page='+p);const g=l.find(x=>x.files&&x.files[GFILE]);if(g)return g.id;if(l.length<100)break}
+  return null;
+}
+async function readRemote(){
+  const f=(await gh('/gists/'+sync.gist)).files[GFILE];if(!f)return null;
+  const d=JSON.parse(f.truncated?await fetch(f.raw_url,{cache:'no-store'}).then(r=>r.text()):f.content);
+  return valid(d)?d:null;
+}
+async function pull(first){
+  if(!sync||busy||(sheetCtx&&!first))return; // pas de remplacement pendant qu'une fiche est ouverte
+  busy=true;setSync('loading');
+  try{
+    if(!sync.gist){sync.gist=await findGist();saveSync()}
+    const r=sync.gist?await readRemote():null;
+    if(r&&(first||r.updatedAt>state.updatedAt)){
+      try{localStorage.setItem('kairos-avant-synchro',JSON.stringify(state))}catch(e){}
+      state=r;if(!state.ehpad)state.ehpad={};persistLocal();renderAll();
+    }
+    pulled=true;busy=false;
+    if(!r||state.updatedAt>r.updatedAt)return push();
+    setSync('ok');
+  }catch(e){busy=false;setSync(e===401?'auth':'err')}
+}
+async function push(){
+  if(!sync||!pulled)return; // jamais d'envoi avant d'avoir lu la version en ligne
+  if(busy)return schedulePush();
+  busy=true;setSync('loading');
+  const body={description:GDESC,files:{[GFILE]:{content:JSON.stringify(state)}}};
+  try{
+    if(sync.gist)await gh('/gists/'+sync.gist,{method:'PATCH',body:JSON.stringify(body)});
+    else{sync.gist=(await gh('/gists',{method:'POST',body:JSON.stringify({...body,public:false})})).id;saveSync()}
+    busy=false;setSync('ok');
+  }catch(e){
+    busy=false;
+    if(e===404){sync.gist=null;saveSync();return push()} // gist supprimé : on en recrée un
+    setSync(e===401?'auth':'err');
+  }
+}
+function schedulePush(){clearTimeout(pushT);pushT=setTimeout(push,1500)}
+async function connect(token){
+  sync={token};
+  try{await gh('/gists?per_page=1')}catch(e){sync=null;$('#syncErr').textContent=e===401?'Jeton refusé par GitHub.':e===403?"Ce jeton n'a pas le droit « Gists ».":'Connexion à GitHub impossible.';return}
+  saveSync();pulled=false;await pull(true);closeSheet();toast('Synchro activée ✓');
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull()});
+window.addEventListener('online',()=>pull());
 
 /* ---------- export / import ---------- */
 function exportData(){
@@ -92,7 +147,13 @@ function openData(){
     <h2>Sauvegarde</h2><p class="meta">Tes données sont enregistrées sur cet appareil. Garde une copie de secours de temps en temps.</p>
     <div class="sh-foot"><button class="btn" data-act="export">↓ Exporter</button><label class="btn ghost" style="text-align:center;cursor:pointer">↑ Importer<input type="file" accept=".json,application/json" id="impFile" hidden></label></div>
     <p class="meta" id="impInfo" style="margin-top:14px"></p><div class="err" id="impErr"></div>
-    <div class="sh-foot"><button class="btn danger" data-act="importGo" id="impGo" hidden>Remplacer mes données</button></div>`,{kind:'data'});
+    <div class="sh-foot"><button class="btn danger" data-act="importGo" id="impGo" hidden>Remplacer mes données</button></div>
+    <h2 style="margin-top:22px">Synchro en ligne</h2>
+    ${sync?`<p class="meta">Connecté à GitHub : tes données passent d'un appareil à l'autre.</p>
+    <div class="sh-foot"><button class="btn ghost" data-act="syncNow">Synchroniser</button><button class="btn danger" data-act="syncOff">Déconnecter</button></div>`
+    :`<p class="meta">Colle ton jeton GitHub (droit « Gists » seulement), le même sur chaque appareil. S'il y a déjà des données en ligne, elles remplacent celles de cet appareil (une copie est gardée).</p>
+    <form class="addrow" data-form="syncOn"><input name="t" type="password" placeholder="github_pat_…" autocomplete="off"><button>Connecter</button></form>`}
+    <div class="err" id="syncErr"></div>`,{kind:'data'});
 }
 
 /* ---------- planning ---------- */
@@ -342,6 +403,8 @@ document.addEventListener('click',e=>{
     case 'data':openData();break;
     case 'export':exportData();break;
     case 'importGo':applyImport();break;
+    case 'syncNow':closeSheet();pull();break;
+    case 'syncOff':sync=null;saveSync();pulled=false;setSync('local');openData();break;
     case 'fab':if(tab==='urg')openUrgAdd();else openEditor(defaultSlot());break;
     case 'open':openDetails(a.dataset.type,a.dataset.k,a.dataset.id);break;
     case 'shift':openShift(a.dataset.k);break;
@@ -388,6 +451,7 @@ document.addEventListener('submit',e=>{
       const wk=mondayOf(parse(data.date));if(key(wk)!==key(curMon))curMon=wk;
       save();openDetails('block',data.date,id);break;
     }
+    case 'syncOn':{const t=f.t.value.trim();if(t)connect(t);break}
     case 'addUrg':{
       const txt=f.t.value.trim();if(!txt)return;
       state.urgent.push({id:uid(),text:txt,done:false,at:Date.now()});save();closeSheet();break;
@@ -418,6 +482,8 @@ document.fonts&&document.fonts.ready&&document.fonts.ready.then(fitHeight);
 setTimeout(()=>$('#splash').classList.add('out'),2200);
 setInterval(tickClock,1000);
 setInterval(()=>{if(!sheetCtx){renderPlan();renderNow()}},60000);
-setSync('local');
+setSync('local');pull();
 })();
 
+/* ---------- mode hors connexion (PWA) ---------- */
+if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));

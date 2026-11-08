@@ -53,7 +53,7 @@ input,select{font:inherit;color:inherit}
 .brand{font-family:var(--disp);font-weight:600;font-size:22px;letter-spacing:-.04em;display:flex;align-items:center}
 .brand b{color:var(--txt)}
 .sync{width:7px;height:7px;border-radius:50%;background:var(--dim);margin-left:7px}
-.sync.ok{background:var(--bf)}.sync.err{background:var(--red)}.sync.loading{background:var(--y)}
+.sync.ok{background:var(--bf)}.sync.err,.sync.auth{background:var(--red)}.sync.loading{background:var(--y)}
 .wk{flex:1;display:flex;align-items:center;justify-content:center;gap:6px}
 .ibtn{width:36px;height:36px;border-radius:11px;background:var(--glass2);border:1px solid var(--gl);display:grid;place-items:center;color:var(--mut);transition:.15s}
 .ibtn:hover{color:var(--txt);background:var(--glass3)}
