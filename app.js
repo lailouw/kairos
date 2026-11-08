@@ -24,6 +24,12 @@ const PROFILS={
     },
     PH:{broflip:'Ex : récup + annonces',love:'Ex : soirée en amoureux',other:'Ex : courses, ménage, sport'}},
   clara:{nom:'Clara',cle:'',store:'zephir-state-clara',file:'zephir-clara.json',dimRepos:1,
+    // planning Adopt recopié de la feuille papier : affiché par défaut, un choix fait dans l'appli passe devant
+    PLANNING:{
+      '2026-11-09':'14:00-18:00','2026-11-10':'Journée','2026-11-11':'Férié','2026-11-12':'Journée','2026-11-13':'11:00-19:00','2026-11-14':'Continu',
+      '2026-11-16':'Aprem','2026-11-17':'Journée','2026-11-18':'13:00-19:00','2026-11-19':'Congé','2026-11-20':'10:00-18:00','2026-11-21':'Continu',
+      '2026-11-23':'Aprem','2026-11-24':'Journée','2026-11-25':'13:00-19:00','2026-11-26':'Congé','2026-11-27':'Journée','2026-11-28':'Continu'
+    },
     SHIFTS:{
       Aprem:{name:'Après-midi',segs:[['14:00','19:00']]},
       'Journée':{name:'Matin + aprem',segs:[['10:00','12:30'],['14:00','19:00']]},
@@ -245,7 +251,8 @@ function openData(){
 let curMon=mondayOf(new Date());
 let tab='plan';
 // poste du jour : un code de SHIFTS, ou des heures du jour 'HH:MM-HH:MM' ; dimanche = Repos si rien n'est mis (profil dimRepos)
-const codeOf=k=>state.shifts[k]||(P.dimRepos&&parse(k).getDay()===0?'Repos':'');
+// ordre : choix fait dans l'appli ('' = « Pas encore connu » choisi exprès) > planning papier (P.PLANNING) > dimanche Repos
+const codeOf=k=>k in state.shifts?state.shifts[k]:(P.PLANNING&&P.PLANNING[k])||(P.dimRepos&&parse(k).getDay()===0?'Repos':'');
 const isHours=c=>/^\d\d:\d\d-\d\d:\d\d$/.test(c||'');
 const shOf=c=>SHIFTS[c]||(isHours(c)?{name:'Heures du jour',segs:[c.split('-')]}:null);
 const codeLbl=c=>isHours(c)?hfmt(t2m(c.slice(0,5)))+'-'+hfmt(endMin(c.slice(6))):c;
@@ -504,7 +511,7 @@ document.addEventListener('click',e=>{
     case 'fab':if(tab==='urg')openUrgAdd();else openEditor(defaultSlot());break;
     case 'open':openDetails(a.dataset.type,a.dataset.k,a.dataset.id);break;
     case 'shift':openShift(a.dataset.k);break;
-    case 'setShift':{const k=a.dataset.k,code=a.dataset.code;if(code)state.shifts[k]=code;else delete state.shifts[k];save();closeSheet();break}
+    case 'setShift':{const k=a.dataset.k,code=a.dataset.code;if(code)state.shifts[k]=code;else if(P.PLANNING&&P.PLANNING[k])state.shifts[k]='';else delete state.shifts[k];save();closeSheet();break}
     case 'toggleImp':{if(!c)break;const r=refOf(c.type,c.k,c.id,true);if(!r)break;r.imp=!r.imp;save();openDetails(c.type,c.k,c.id);break}
     case 'ckTask':{if(!c)break;const r=refOf(c.type,c.k,c.id,true);const t=r&&(r.tasks||[]).find(x=>x.id===a.dataset.tid);if(t){t.done=!t.done;save();openDetails(c.type,c.k,c.id)}break}
     case 'delTask':{if(!c)break;const r=refOf(c.type,c.k,c.id,true);if(r){r.tasks=(r.tasks||[]).filter(x=>x.id!==a.dataset.tid);save();openDetails(c.type,c.k,c.id)}break}
