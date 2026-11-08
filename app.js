@@ -4,11 +4,11 @@ const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
 const DSH=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MONTHS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
 // Un profil par personne. La clé 'ehpad' = le travail à postes (Adopt chez Clara) : gardée pour ne pas toucher aux données ni au CSS.
-// 'love' = temps ensemble : ces plages vont dans le fichier partagé du Gist.
+// Une plage peut être partagée avec d'autres profils (« Partagé avec ») : elle apparaît alors dans leurs calendriers.
 const PROFILS={
   // cle = la ligne « Mes données » → Créer mon mot de passe (clé publique . jeton + clés perso chiffrés par le mot de passe).
   // Vide : le mot de passe est le jeton lui-même, et pas de synchro tant que le mot de passe n'est pas créé (rien n'est envoyé en clair).
-  // groupe = profils qui partagent les plages 'love' (fichier commun chiffré, lisible par eux seuls). Sans groupe : 'love' reste perso.
+  // groupe = profils avec qui les plages 'love' sont partagées par défaut (décochable dans la plage).
   moi:{nom:'Laïlou',cle:'',groupe:'couple',store:'zephir-state',file:'zephir.json',
     SHIFTS:{
       M70:{name:'Matin',segs:[['06:30','14:30']]},
@@ -94,24 +94,32 @@ let state=null;
 try{state=JSON.parse(localStorage.getItem(P.store)||(P.store==='zephir-state'?localStorage.getItem('odt-state'):null))}catch(e){}
 if(!valid(state))state=seed();
 if(!state.ehpad)state.ehpad={};
-// plages « ensemble » : communes aux profils du même groupe, { updatedAt, blocks, dirty = pas encore envoyé }
-const SSTORE=P.groupe==='couple'?'zephir-ensemble':'zephir-ensemble-'+P.groupe;
-let shared=null;try{if(P.groupe)shared=JSON.parse(localStorage.getItem(SSTORE))}catch(e){}
-if(!shared||!Array.isArray(shared.blocks))shared={updatedAt:0,blocks:[]};
-let sharedJSON=JSON.stringify(shared.blocks);
+// plages partagées : b.qui = profils concernés (triés, moi compris). Chaque groupe de personnes (gid = 'clara_moi', 'marvin_moi'…)
+// a son fichier commun : parts[gid] = { updatedAt, blocks, dirty = pas encore envoyé }
+const ME=profil||'moi',PSTORE='zephir-partage-'+ME;
+const groupeP=()=>Object.keys(PROFILS).filter(id=>P.groupe&&PROFILS[id].groupe===P.groupe).sort(); // partage par défaut des plages 'love'
+let parts=null;try{parts=JSON.parse(localStorage.getItem(PSTORE))}catch(e){}
+if(!parts||typeof parts!=='object'){parts={};try{const o=P.groupe==='couple'&&JSON.parse(localStorage.getItem('zephir-ensemble'));if(o&&Array.isArray(o.blocks))parts.clara_moi=o}catch(e){}} // ancien stockage du couple
+const sjson={};for(const g in parts)sjson[g]=JSON.stringify(parts[g].blocks);
 sortBlocks();persistLocal();
 
-const allBlocks=()=>state.blocks.concat(shared.blocks);
-// range chaque plage au bon endroit (aussi les anciennes données où « Copine & chat » était dans state.blocks)
+const allBlocks=()=>state.blocks.concat(...Object.values(parts).map(p=>p.blocks));
+const catOf=c=>CATS[c]?c:'other'; // catégorie qu'un autre profil n'a pas (BroFliping chez Clara) : affichée en « Autres »
+// range chaque plage au bon endroit (aussi les anciennes plages 'love' sans qui : partagées avec le groupe, comme avant)
 function sortBlocks(){
-  const m=new Map();shared.blocks.concat(state.blocks).forEach(b=>m.set(b.id,b));
-  const all=[...m.values()];
-  const enG=b=>P.groupe&&b.cat==='love';
-  state.blocks=all.filter(b=>!enG(b));shared.blocks=all.filter(enG);
-  const j=JSON.stringify(shared.blocks);
-  if(j!==sharedJSON){sharedJSON=j;shared.updatedAt=Date.now();shared.dirty=true}
+  const m=new Map();Object.values(parts).forEach(p=>p.blocks.forEach(b=>m.set(b.id,b)));state.blocks.forEach(b=>m.set(b.id,b));
+  const by={};state.blocks=[];
+  for(const b of m.values()){
+    if(!b.qui&&b.cat==='love'&&P.groupe)b.qui=groupeP();
+    const g=b.qui&&b.qui.length>1&&b.qui.includes(ME)?b.qui.join('_'):null;
+    if(g)(by[g]=by[g]||[]).push(b);else state.blocks.push(b);
+  }
+  for(const g of new Set([...Object.keys(parts),...Object.keys(by)])){
+    const p=parts[g]=parts[g]||{updatedAt:0,blocks:[]};p.blocks=by[g]||[];
+    const j=JSON.stringify(p.blocks);if(j!==(sjson[g]||'[]')){sjson[g]=j;p.updatedAt=Date.now();p.dirty=true}
+  }
 }
-function persistLocal(){try{localStorage.setItem(P.store,JSON.stringify(state));if(P.groupe)localStorage.setItem(SSTORE,JSON.stringify(shared))}catch(e){setSync('err')}}
+function persistLocal(){try{localStorage.setItem(P.store,JSON.stringify(state));localStorage.setItem(PSTORE,JSON.stringify(parts))}catch(e){setSync('err')}}
 function save(){state.updatedAt=Date.now();sortBlocks();persistLocal();renderAll();schedulePush()}
 
 /* ---------- status dot ---------- */
@@ -120,17 +128,21 @@ function setSync(s){const el=$('#sync');el.className='sync '+({nopw:'local',cle:
 
 /* ---------- synchro en ligne (Gist GitHub privé, contenu chiffré) ---------- */
 // shortcut: le dernier appareil qui enregistre gagne (updatedAt) ; 2 appareils modifiés hors ligne en même temps → le plus ancien est écrasé (copie dans 'zephir-avant-synchro'). Passer à une fusion si ça arrive souvent.
-// shortcut: les plages « ensemble » aussi : si vous modifiez tous les deux en même temps, la modif la plus récente gagne. Passer à une fusion plage par plage si ça arrive.
+// shortcut: les plages partagées aussi (par groupe de personnes) : si vous modifiez tous les deux en même temps, la modif la plus récente gagne. Passer à une fusion plage par plage si ça arrive.
 // Tout le monde partage le même jeton GitHub, donc rien n'est envoyé en clair :
 // - un fichier par profil, chiffré (AES-GCM) avec la clé perso d, connue de son seul propriétaire (dans sa ligne cle, déverrouillée par son mot de passe) ;
-// - un fichier par groupe, chiffré avec la clé k du groupe, recopiée dans le fichier pour chaque membre avec sa clé publique (ECDH P-256).
+// - un fichier par groupe de personnes qui partagent des plages, chiffré avec la clé du groupe (cles.ks[gid]), recopiée dans le fichier pour chaque membre avec sa clé publique (ECDH P-256).
 // shortcut: le jeton permet quand même d'effacer ou d'abîmer le fichier d'un autre (pas de le lire). Pour l'empêcher, il faudrait un jeton par personne ou un vrai serveur.
 // L'ancien Gist (en clair, avec son historique) n'est plus que lu, pour remplir un appareil neuf. À supprimer à la main quand tout le monde est passé au mot de passe.
-const GH='https://api.github.com',GFILE=P.file,SFILE=P.groupe==='couple'?'zephir-ensemble.json':'zephir-ensemble-'+P.groupe+'.json';
+const GH='https://api.github.com',GFILE=P.file;
+const fileOf=g=>g==='clara_moi'?'zephir-ensemble.json':'zephir-ensemble-'+g+'.json'; // le couple garde son ancien fichier
+const gidOfFile=n=>n==='zephir-ensemble.json'?'clara_moi':((n.match(/^zephir-ensemble-([a-z_]+)\.json$/)||[])[1]||null);
 const GDESC='ZEPHIR – données chiffrées (ne pas supprimer)',OLD_DESC=['ZEPHIR – sauvegarde (ne pas supprimer)','KairOs – sauvegarde (ne pas supprimer)'];
 let sync=null;try{sync=JSON.parse(localStorage.getItem('zephir-sync'))}catch(e){} // {token, g2 = Gist chiffré, gist = ancien Gist}
-let cles=null;try{cles=profil&&JSON.parse(localStorage.getItem('zephir-cles-'+profil))}catch(e){} // {pub, priv, d, k}
-let pulled=false,busy=false,pushT=null,sharedOk=false,sKeys={};
+let cles=null;try{cles=profil&&JSON.parse(localStorage.getItem('zephir-cles-'+profil))}catch(e){} // {pub, priv, d, ks = {gid: clé du groupe}}
+if(cles&&!cles.ks)cles.ks=cles.k?{clara_moi:cles.k}:{}; // ancienne clé unique du couple
+let pulled=false,busy=false,pushT=null,gOk={},gKeys={};
+const allOk=()=>Object.values(gOk).every(Boolean);
 function saveSync(){try{sync?localStorage.setItem('zephir-sync',JSON.stringify(sync)):localStorage.removeItem('zephir-sync')}catch(e){}}
 function saveCles(){try{cles?localStorage.setItem('zephir-cles-'+profil,JSON.stringify(cles)):localStorage.removeItem('zephir-cles-'+profil)}catch(e){}}
 const gh=(path,opt={})=>fetch(GH+path,{...opt,cache:'no-store',headers:{Authorization:'Bearer '+sync.token,Accept:'application/vnd.github+json'}})
@@ -172,7 +184,6 @@ async function unwrapMine(box){
   const w=await crypto.subtle.deriveKey({name:'ECDH',public:epub},priv,AES,false,['decrypt']);
   return b64(new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(box.iv)},w,unb64(box.c))));
 }
-const membres=()=>P.groupe?Object.keys(PROFILS).filter(id=>PROFILS[id].groupe===P.groupe):[];
 const pubOf=id=>id===profil&&cles?cles.pub:(PROFILS[id].cle.includes('.')?PROFILS[id].cle.split('.')[0]:null);
 async function newCles(){
   const kp=await crypto.subtle.generateKey(ECDH,true,['deriveKey']);
@@ -196,50 +207,56 @@ async function pull(first){
       try{localStorage.setItem('zephir-avant-synchro',JSON.stringify(state))}catch(e){}
       state=r;if(!state.ehpad)state.ehpad={};changed=true;
     }
-    sharedOk=!P.groupe;
-    if(P.groupe){
-      const fs=g&&await readFile(g,SFILE);
-      let rs=null;
+    gOk={};
+    const mes=new Set(Object.keys(parts));
+    if(g)for(const n in g.files){const gid=gidOfFile(n);if(gid&&gid.split('_').includes(profil))mes.add(gid)}
+    for(const gid of mes){
+      const name=fileOf(gid),fs=g&&await readFile(g,name),k0=cles.ks[gid];
+      const p=parts[gid]||(parts[gid]={updatedAt:0,blocks:[]});let rs=null;
       if(fs){
-        sKeys=fs.keys||{};const avaitK=!!cles.k;
-        if(sKeys[profil]){try{const k=await unwrapMine(sKeys[profil]);if(k!==cles.k){cles.k=k;saveCles()}}catch(e){}}
-        if(cles.k){try{rs=await openBox(await aesKey(cles.k),fs)}catch(e){}}
-        sharedOk=!!rs; // sinon : on attend qu'un autre membre nous ajoute, sans rien envoyer
-        if(rs&&membres().some(id=>pubOf(id)&&!sKeys[id]))shared.dirty=true; // un membre à ajouter
-        // clé reçue pour la première fois : on réunit les plages d'ici et celles en ligne, sans rien perdre
-        if(rs&&!avaitK&&Array.isArray(rs.blocks)){const m=new Map(rs.blocks.map(x=>[x.id,x]));shared.blocks.forEach(x=>m.set(x.id,x));
-          rs={updatedAt:Date.now(),blocks:[...m.values()]};if(shared.blocks.length)shared.dirty=true}
+        const keys=gKeys[gid]=fs.keys||{};
+        if(keys[profil]){try{cles.ks[gid]=await unwrapMine(keys[profil])}catch(e){}}
+        if(cles.ks[gid]){try{rs=await openBox(await aesKey(cles.ks[gid]),fs)}catch(e){}}
+        gOk[gid]=!!rs; // sinon : on attend qu'un autre membre nous ajoute, sans rien envoyer
+        if(rs&&gid.split('_').some(id=>pubOf(id)&&!keys[id]))p.dirty=true; // un membre à ajouter
+        // clé reçue (ou changée) : on réunit les plages d'ici et celles en ligne, sans rien perdre
+        if(rs&&cles.ks[gid]!==k0&&Array.isArray(rs.blocks)){const m=new Map(rs.blocks.map(x=>[x.id,x]));p.blocks.forEach(x=>m.set(x.id,x));
+          rs={updatedAt:Date.now(),blocks:[...m.values()]};if(p.blocks.length)p.dirty=true}
       }else{
-        sKeys={};if(!shared.updatedAt)rs=await ancien(SFILE);
-        if(!cles.k){cles.k=b64(rnd(32));saveCles()}
-        sharedOk=true;if(shared.blocks.length||rs)shared.dirty=true;
+        gKeys[gid]={};if(!p.updatedAt)rs=await ancien(name);
+        if(!cles.ks[gid])cles.ks[gid]=b64(rnd(32));
+        gOk[gid]=true;if(p.blocks.length||rs)p.dirty=true;
       }
-      if(rs&&Array.isArray(rs.blocks)&&rs.updatedAt>shared.updatedAt){shared={updatedAt:rs.updatedAt,blocks:rs.blocks,dirty:shared.dirty};sharedJSON=JSON.stringify(rs.blocks);changed=true}
+      if(rs&&Array.isArray(rs.blocks)&&rs.updatedAt>p.updatedAt){parts[gid]={updatedAt:rs.updatedAt,blocks:rs.blocks,dirty:p.dirty};sjson[gid]=JSON.stringify(rs.blocks);changed=true}
     }
+    saveCles();
     if(changed){sortBlocks();persistLocal();renderAll()}
     pulled=true;busy=false;
-    if(!f||!r||state.updatedAt>r.updatedAt||(sharedOk&&shared.dirty))return push();
-    setSync(sharedOk?'ok':'attente');
+    if(!f||!r||state.updatedAt>r.updatedAt||Object.keys(parts).some(gid=>gOk[gid]&&parts[gid].dirty))return push();
+    setSync(allOk()?'ok':'attente');
   }catch(e){busy=false;setSync(e===401?'auth':'err')}
 }
 async function push(){
   if(!sync||!pulled||!cles)return; // jamais d'envoi avant d'avoir lu la version en ligne
   if(busy)return schedulePush();
+  if(Object.keys(parts).some(gid=>parts[gid].dirty&&!(gid in gOk)))return pull(true); // nouveau partage : lire d'abord son fichier en ligne
   busy=true;setSync('loading');
   try{
     const body={description:GDESC,files:{[GFILE]:{content:JSON.stringify({v:2,...await seal(await aesKey(cles.d),state)})}}};
-    // le fichier du groupe n'est envoyé que s'il a changé ici, pour ne pas écraser une modif d'un autre
-    const envoi=P.groupe&&sharedOk&&shared.dirty&&cles.k,sentAt=shared.updatedAt;
-    if(envoi){
-      const kRaw=unb64(cles.k),keys={...sKeys};
-      for(const id of membres()){const pk=pubOf(id);if(pk)keys[id]=await wrapFor(pk,kRaw)}
-      sKeys=keys;
-      body.files[SFILE]={content:JSON.stringify({v:2,keys,...await seal(await aesKey(cles.k),{updatedAt:shared.updatedAt,blocks:shared.blocks})})};
+    // un fichier de groupe n'est envoyé que s'il a changé ici, pour ne pas écraser une modif d'un autre
+    const envois=[];
+    for(const gid in parts){
+      const p=parts[gid],k=cles.ks[gid];if(!gOk[gid]||!p.dirty||!k)continue;
+      const kRaw=unb64(k),keys={...gKeys[gid]};
+      for(const id of gid.split('_')){const pk=pubOf(id);if(pk)keys[id]=await wrapFor(pk,kRaw)}
+      gKeys[gid]=keys;
+      body.files[fileOf(gid)]={content:JSON.stringify({v:2,keys,...await seal(await aesKey(k),{updatedAt:p.updatedAt,blocks:p.blocks})})};
+      envois.push([gid,p.updatedAt]);
     }
     if(sync.g2)await gh('/gists/'+sync.g2,{method:'PATCH',body:JSON.stringify(body)});
     else{sync.g2=(await gh('/gists',{method:'POST',body:JSON.stringify({...body,public:false})})).id;saveSync()}
-    if(envoi&&shared.updatedAt===sentAt){shared.dirty=false;persistLocal()}
-    busy=false;setSync(sharedOk?'ok':'attente');
+    envois.forEach(([gid,at])=>{if(parts[gid].updatedAt===at)parts[gid].dirty=false});if(envois.length)persistLocal();
+    busy=false;setSync(allOk()?'ok':'attente');
   }catch(e){
     busy=false;
     if(e===404){sync.g2=null;saveSync();return push()} // gist supprimé : on en recrée un
@@ -281,7 +298,7 @@ async function login(nom,pw){
   try{
     localStorage.setItem('zephir-profil',p);
     if(u){let old=null;try{old=JSON.parse(localStorage.getItem('zephir-cles-'+p))}catch(e){}
-      localStorage.setItem('zephir-cles-'+p,JSON.stringify({pub:c.split('.')[0],priv:u.x,d:u.d,k:old&&old.d===u.d?old.k:undefined}))}
+      localStorage.setItem('zephir-cles-'+p,JSON.stringify({pub:c.split('.')[0],priv:u.x,d:u.d,ks:old&&old.d===u.d?(old.ks||(old.k?{clara_moi:old.k}:undefined)):undefined}))}
   }catch(e){}
   location.reload(); // tout repart avec les catégories et les données du profil choisi
 }
@@ -354,7 +371,7 @@ function itemsForDay(k){
   const code=codeOf(k),sh=shOf(code);
   const ex=state.ehpad[k]||{};
   if(sh&&sh.segs)sh.segs.forEach(s=>out.push({type:'ehpad',cat:'ehpad',date:k,s:t2m(s[0]),e:endMin(s[1]),title:CATS.ehpad.name,code,imp:!!ex.imp,tasks:ex.tasks||[]}));
-  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:b.cat,id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.cat==='broflip'?CATS.broflip.name:(b.title||CATS[b.cat].name),imp:!!b.imp,tasks:b.tasks||[]}));
+  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:catOf(b.cat),id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.cat==='broflip'?'BroFliping':(b.title||CATS[catOf(b.cat)].name),imp:!!b.imp,tasks:b.tasks||[]}));
   return out.sort((a,b)=>a.s-b.s||b.e-a.e);
 }
 function layout(items){
@@ -499,7 +516,8 @@ function openDetails(type,k,id,focus){
     const c=codeOf(k),sh=shOf(c);if(!sh||!sh.segs)return closeSheet();
     cat='ehpad';title=`${CATS.ehpad.name} · ${codeLbl(c)} (${sh.name})`;
     time=sh.segs.map(s=>hfmt(t2m(s[0]))+' – '+hfmt(endMin(s[1]))).join(' et ');
-  }else{cat=ref.cat;title=ref.title||CATS[cat].name;time=hfmt(t2m(ref.start))+' – '+hfmt(endMin(ref.end))}
+  }else{cat=catOf(ref.cat);title=ref.title||CATS[cat].name;time=hfmt(t2m(ref.start))+' – '+hfmt(endMin(ref.end));
+    const avec=(ref.qui||[]).filter(id=>id!==ME&&PROFILS[id]).map(id=>PROFILS[id].nom);if(avec.length)time+=' · avec '+avec.join(' et ')}
   const tasks=ref.tasks||[],done=tasks.filter(t=>t.done).length;
   const html=`<div class="sh-head"><span class="tag t-${cat}">${CATS[cat].name}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <h2>${esc(title)}</h2><p class="meta">${dayLabel(k)} · ${time}</p>
@@ -518,11 +536,14 @@ function openEditor(opts){
   const v=b?{...b}:{cat:bc[0],title:'',date:opts.date,start:opts.start,end:opts.end,imp:false};
   const mon=mondayOf(parse(v.date));
   const dayOpts=[...Array(7)].map((_,i)=>{const k=key(addDays(mon,i));return `<option value="${k}"${k===v.date?' selected':''}>${dayLabel(k)}</option>`}).join('');
+  const qui=v.qui||(v.cat==='love'?groupeP():[]);
+  const avec=Object.keys(PROFILS).filter(id=>id!==ME).map(id=>`<label><input type="checkbox" name="qui" value="${id}"${qui.includes(id)?' checked':''}><span class="pill">${esc(PROFILS[id].nom)}</span></label>`).join('');
   const pills=bc.map(c=>`<label><input type="radio" name="cat" value="${c}"${v.cat===c?' checked':''}><span class="pill"><i style="background:${CATS[c].color}"></i>${CATS[c].name}</span></label>`).join('');
   const html=`<div class="sh-head"><span class="tag t-${v.cat}" id="edTag">${b?'Modifier la plage':'Nouvelle plage'}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <form data-form="saveBlock">
       <div class="field"><span class="lbl">Catégorie</span><div class="pills">${pills}</div></div>
-      <div class="field"><span class="lbl">Titre</span><input class="inp" name="title" value="${esc(v.title)}" placeholder="${PH[v.cat]}" maxlength="60" autocomplete="off"></div>
+      <div class="field"><span class="lbl">Titre</span><input class="inp" name="title" value="${esc(v.title)}" placeholder="${PH[v.cat]||''}" maxlength="60" autocomplete="off"></div>
+      <div class="field"><span class="lbl">Partagé avec</span><div class="pills">${avec}</div></div>
       <div class="field"><span class="lbl">Jour</span><select class="inp" name="date">${dayOpts}</select></div>
       <div class="field row2"><div><span class="lbl">Début</span><input class="inp" type="time" name="start" step="900" value="${v.start}" required></div><div><span class="lbl">Fin</span><input class="inp" type="time" name="end" step="900" value="${v.end}" required></div></div>
       <label class="toggle"><input type="checkbox" name="imp"${v.imp?' checked':''}><span>C'est important</span></label>
@@ -611,7 +632,7 @@ document.addEventListener('click',e=>{
     case 'edit':if(c&&c.id)openEditor({id:c.id});break;
     case 'delBlock':{
       if(!a.classList.contains('armed')){a.classList.add('armed');a.textContent='Confirmer ?';setTimeout(()=>{if(a.isConnected){a.classList.remove('armed');a.textContent='Supprimer'}},3000);break}
-      state.blocks=state.blocks.filter(b=>b.id!==c.id);shared.blocks=shared.blocks.filter(b=>b.id!==c.id);save();closeSheet();break}
+      state.blocks=state.blocks.filter(b=>b.id!==c.id);for(const g in parts)parts[g].blocks=parts[g].blocks.filter(b=>b.id!==c.id);save();closeSheet();break}
     case 'ckUrg':{const u=state.urgent.find(x=>x.id===a.dataset.id);if(u){u.done=!u.done;u.doneAt=Date.now();save()}break}
     case 'delUrg':state.urgent=state.urgent.filter(x=>x.id!==a.dataset.id);save();break;
     case 'clearUrg':state.urgent=state.urgent.filter(x=>!x.done);save();break;
@@ -622,7 +643,8 @@ document.addEventListener('change',e=>{
   if(e.target.id==='impFile'&&e.target.files[0]){readImport(e.target.files[0]);return}
   if(e.target.name==='cat'&&sheetCtx&&sheetCtx.kind==='editor'){
     const v=e.target.value,tag=$('#edTag');tag.className='tag t-'+v;
-    const ti=$('#sheet input[name=title]');if(ti)ti.placeholder=PH[v];
+    const ti=$('#sheet input[name=title]');if(ti)ti.placeholder=PH[v]||'';
+    if(v==='love')groupeP().forEach(id=>{const x=$(`#sheet input[name=qui][value="${id}"]`);if(x)x.checked=true}); // plage en couple : partagée par défaut
   }
 });
 
@@ -640,9 +662,10 @@ document.addEventListener('submit',e=>{
       const start=fd.get('start'),end=fd.get('end');
       if(!start||!end){$('#edErr').textContent='Indique une heure de début et de fin.';return}
       if(endMin(end)<=t2m(start)){$('#edErr').textContent="L'heure de fin doit être après l'heure de début.";return}
-      const data={cat:fd.get('cat')||'other',title:String(fd.get('title')||'').trim(),date:fd.get('date'),start,end,imp:!!fd.get('imp')};
+      const old=c&&c.id&&allBlocks().find(b=>b.id===c.id);
+      const data={cat:fd.get('cat')||(old&&old.cat)||'other',qui:[ME,...fd.getAll('qui')].sort(),title:String(fd.get('title')||'').trim(),date:fd.get('date'),start,end,imp:!!fd.get('imp')};
       let id=c&&c.id;
-      if(id){Object.assign(allBlocks().find(b=>b.id===id)||{},data)}
+      if(id){Object.assign(old||{},data)}
       else{id=uid();state.blocks.push({id,...data,tasks:[]})}
       const wk=mondayOf(parse(data.date));if(key(wk)!==key(curMon))curMon=wk;
       save();openDetails('block',data.date,id);break;
