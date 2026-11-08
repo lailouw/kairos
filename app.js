@@ -195,7 +195,7 @@ async function wrapFor(pubB64,kRaw){
   const pub=await crypto.subtle.importKey('raw',unb64(pubB64),ECDH,false,[]);
   const w=await crypto.subtle.deriveKey({name:'ECDH',public:pub},eph.privateKey,AES,false,['encrypt']);
   const iv=rnd(12);
-  return {e:b64(new Uint8Array(await crypto.subtle.exportKey('raw',eph.publicKey))),iv:b64(iv),c:b64(new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},w,kRaw)))};
+  return {p:pubB64,e:b64(new Uint8Array(await crypto.subtle.exportKey('raw',eph.publicKey))),iv:b64(iv),c:b64(new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},w,kRaw)))};
 }
 async function unwrapMine(box){
   const priv=await crypto.subtle.importKey('pkcs8',unb64(cles.priv),ECDH,false,['deriveKey']);
@@ -237,7 +237,7 @@ async function pull(first){
         if(keys[profil]){try{cles.ks[gid]=await unwrapMine(keys[profil])}catch(e){}}
         if(cles.ks[gid]){try{rs=await openBox(await aesKey(cles.ks[gid]),fs)}catch(e){}}
         gOk[gid]=!!rs; // sinon : on attend qu'un autre membre nous ajoute, sans rien envoyer
-        if(rs&&gid.split('_').some(id=>pubOf(id)&&!keys[id]))p.dirty=true; // un membre à ajouter
+        if(rs&&gid.split('_').some(id=>pubOf(id)&&(!keys[id]||keys[id].p!==pubOf(id))))p.dirty=true; // un membre à ajouter, ou sa clé recopiée pour une ancienne clé publique (p = pour quelle clé)
         // clé reçue (ou changée) : on réunit les plages d'ici et celles en ligne, sans rien perdre
         if(rs&&cles.ks[gid]!==k0&&Array.isArray(rs.blocks)){const m=new Map(rs.blocks.map(x=>[x.id,x]));p.blocks.forEach(x=>m.set(x.id,x));
           rs={updatedAt:Date.now(),blocks:[...m.values()],subs:rs.subs};if(p.blocks.length)p.dirty=true}
