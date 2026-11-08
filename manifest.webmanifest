@@ -1,7 +1,7 @@
 {
   "name": "ZEPHIR – Optimisateur de temps",
   "short_name": "ZEPHIR",
-  "description": "Mon planning de la semaine : EHPAD, BroFlip et vie perso.",
+  "description": "Mon planning de la semaine : EHPAD, BroFliping et vie perso.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",

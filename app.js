@@ -18,7 +18,7 @@ const PROFILS={
     },
     CATS:{
       ehpad:{name:'EHPAD',color:'#7C9CFF'},
-      broflip:{name:'BroFlip',color:'#5FD4AE'},
+      broflip:{name:'BroFliping',color:'#5FD4AE'},
       love:{name:'Copine & chat',color:'#F0A0C0'},
       other:{name:'Autres',color:'#E0B36A'}
     },
@@ -255,7 +255,7 @@ function itemsForDay(k){
   const code=codeOf(k),sh=shOf(code);
   const ex=state.ehpad[k]||{};
   if(sh&&sh.segs)sh.segs.forEach(s=>out.push({type:'ehpad',cat:'ehpad',date:k,s:t2m(s[0]),e:endMin(s[1]),title:CATS.ehpad.name,code,imp:!!ex.imp,tasks:ex.tasks||[]}));
-  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:b.cat,id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.title||CATS[b.cat].name,imp:!!b.imp,tasks:b.tasks||[]}));
+  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:b.cat,id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.cat==='broflip'?CATS.broflip.name:(b.title||CATS[b.cat].name),imp:!!b.imp,tasks:b.tasks||[]}));
   return out.sort((a,b)=>a.s-b.s||b.e-a.e);
 }
 function layout(items){
