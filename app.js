@@ -160,7 +160,11 @@ const GDESC='ZEPHIR – données chiffrées (ne pas supprimer)',OLD_DESC=['ZEPHI
 let sync=null;try{sync=JSON.parse(localStorage.getItem('zephir-sync'))}catch(e){} // {token, g2 = Gist chiffré, gist = ancien Gist}
 let cles=null;try{cles=profil&&JSON.parse(localStorage.getItem('zephir-cles-'+profil))}catch(e){} // {pub, priv, d, ks = {gid: clé du groupe}}
 if(cles&&!cles.ks)cles.ks=cles.k?{clara_moi:cles.k}:{}; // ancienne clé unique du couple
-let pulled=false,busy=false,pushT=null,gOk={},gKeys={};
+let pulled=false,busy=false,pushT=null,gOk={},gKeys={},annu={};
+// annuaire en ligne des clés publiques (pas secrètes) : chaque appareil y met la sienne, pour partager avec quelqu'un dont la ligne n'est pas encore dans PROFILS.
+// shortcut: quelqu'un qui a le jeton pourrait y mettre une fausse clé et lire les plages partagées avec ce profil ; la ligne cle de PROFILS passe toujours devant. Coller la ligne dans PROFILS dès qu'on l'a.
+const AFILE='zephir-annuaire.json';
+const okPub=(id,v)=>Object.hasOwn(PROFILS,id)&&typeof v==='string'&&/^[A-Za-z0-9+/]{86}[A-Za-z0-9+/=]{2}$/.test(v);
 const allOk=()=>Object.values(gOk).every(Boolean);
 function saveSync(){try{sync?localStorage.setItem('zephir-sync',JSON.stringify(sync)):localStorage.removeItem('zephir-sync')}catch(e){}}
 function saveCles(){try{cles?localStorage.setItem('zephir-cles-'+profil,JSON.stringify(cles)):localStorage.removeItem('zephir-cles-'+profil)}catch(e){}}
@@ -203,7 +207,7 @@ async function unwrapMine(box){
   const w=await crypto.subtle.deriveKey({name:'ECDH',public:epub},priv,AES,false,['decrypt']);
   return b64(new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(box.iv)},w,unb64(box.c))));
 }
-const pubOf=id=>id===profil&&cles?cles.pub:(PROFILS[id].cle.includes('.')?PROFILS[id].cle.split('.')[0]:null);
+const pubOf=id=>id===profil&&cles?cles.pub:(PROFILS[id].cle.includes('.')?PROFILS[id].cle.split('.')[0]:annu[id]||null);
 async function newCles(){
   const kp=await crypto.subtle.generateKey(ECDH,true,['deriveKey']);
   return {pub:b64(new Uint8Array(await crypto.subtle.exportKey('raw',kp.publicKey))),priv:b64(new Uint8Array(await crypto.subtle.exportKey('pkcs8',kp.privateKey))),d:b64(rnd(32))};
@@ -216,6 +220,7 @@ async function pull(first){
   try{
     if(!sync.g2){sync.g2=await findGist([GDESC]);saveSync()}
     const g=sync.g2?await gh('/gists/'+sync.g2):null;
+    annu={};try{const a=g&&await readFile(g,AFILE);for(const id in a)if(okPub(id,a[id]))annu[id]=a[id]}catch(e){}
     const f=g&&await readFile(g,GFILE);
     let r=null;
     if(f){try{r=await openBox(await aesKey(cles.d),f)}catch(e){busy=false;setSync('cle');return}} // chiffré avec une autre clé : on n'écrase rien
@@ -254,7 +259,7 @@ async function pull(first){
     if(changed){sortBlocks();persistLocal();renderAll()}
     notifierNouveaux();
     pulled=true;busy=false;
-    if(!f||!r||state.updatedAt>r.updatedAt||Object.keys(parts).some(gid=>gOk[gid]&&parts[gid].dirty))return push();
+    if(!f||!r||state.updatedAt>r.updatedAt||annu[profil]!==cles.pub||Object.keys(parts).some(gid=>gOk[gid]&&parts[gid].dirty))return push();
     setSync(allOk()?'ok':'attente');
   }catch(e){busy=false;setSync(e===401?'auth':'err')}
 }
@@ -265,6 +270,7 @@ async function push(){
   busy=true;setSync('loading');
   try{
     const body={description:GDESC,files:{[GFILE]:{content:JSON.stringify({v:2,...await seal(await aesKey(cles.d),state)})}}};
+    if(annu[profil]!==cles.pub){annu[profil]=cles.pub;body.files[AFILE]={content:JSON.stringify(annu)}}
     // un fichier de groupe n'est envoyé que s'il a changé ici, pour ne pas écraser une modif d'un autre
     const envois=[];
     for(const gid in parts){
