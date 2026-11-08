@@ -10,7 +10,7 @@ const PROFILS={
   // cle = la ligne « Mes données » → Créer mon mot de passe (clé publique . jeton + clés perso chiffrés par le mot de passe).
   // Vide : le mot de passe est le jeton lui-même, et pas de synchro tant que le mot de passe n'est pas créé (rien n'est envoyé en clair).
   // groupe : sert seulement aux anciennes plages 'love' sans « Partagé avec » (partagées avec le groupe, comme avant).
-  moi:{nom:'Laïlou',cle:'',groupe:'couple',store:'zephir-state',file:'zephir.json'},
+  moi:{nom:'Laïlou',cle:'BM+QGygflzWq3lSDccMjEV1Pp5knbotjV7Mbjzqpk0HCJVoxY0gZtTnJDXb3KBwMfbPTPLZJTpLXsPCRRHWYHJc=.LSYqhmifdE6XeowS0eidlNa7tQSKNRv7PJm96jFffn4Zqea5EMOUYtbQpBo4qnds2KHMx/jycHPdcK9EQbB4CxOWDFjVaY80qEkYZh/PpiETcyQsbi5dAaiuV/kEa6rcY8AJ3ZWQwRI/Sy3RUqhS3oDn8JX5B6x6n0VnArURjjgPFZmnGPBPZ7DVle0FVKJ6dVGhN/oXai2v4bywmhs+uZyDOPpQudBIfkpafVoQR9JzOQAjbuJ1qth7RDxNEP3A09VIJdmWwZZ3h50WeMULXJBZtdTkIFafHzB/4+grv9q4wtwBOXD9pgyg0bssIqqS0Bc2XDl3zny0Rt9EjPNpqpOv5iHfgefMC8w+kU+nu47VwlDzarLiE8H8mmFURaHsIF+Xw4GdlTfg7Y+wS4o8x0dEujAhNwAY4Kdman74zEHF/h16dqM5vrd6exa8bBiVOwxrkcWToajpa4q6tHhVlgzX4O/jYlnANm9ADL3McaorhE8HzVrXfW8utYTsLgyL5HG2',groupe:'couple',store:'zephir-state',file:'zephir.json'},
   clara:{nom:'Clara',cle:'',groupe:'couple',store:'zephir-state-clara',file:'zephir-clara.json'},
   marvin:{nom:'Marvin',cle:'',store:'zephir-state-marvin',file:'zephir-marvin.json'}
 };
@@ -407,6 +407,7 @@ function openData(){
     <p class="meta" id="impInfo" style="margin-top:14px"></p><div class="err" id="impErr"></div>
     <div class="sh-foot"><button class="btn danger" data-act="importGo" id="impGo" hidden>Remplacer mes données</button></div>
     <h2 style="margin-top:22px">Synchro en ligne</h2>
+    <p class="meta"><b>État : ${esc($('#sync').title||'—')}</b></p>
     ${sync?`<p class="meta">Connecté à GitHub : tes données passent d'un appareil à l'autre.</p>
     <div class="sh-foot"><button class="btn ghost" data-act="syncNow">Synchroniser</button><button class="btn danger" data-act="syncOff">Déconnecter</button></div>`
     :`<p class="meta">Colle ton jeton GitHub (droit « Gists » seulement), le même sur chaque appareil. La version la plus récente (en ligne ou sur cet appareil) est gardée, l'autre est mise de côté.</p>
