@@ -1,8 +1,8 @@
 // Mode hors connexion : l'appli est gardée en cache sur l'appareil.
 // À chaque nouvelle version mise en ligne, changer ce numéro.
-const CACHE = 'zephir-v9';
+const CACHE = 'zephir-v10';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
-  'icones/icone-192.png', 'icones/icone-512.png', 'icones/apple-touch-icon.png'];
+  'icones/icone-192.png', 'icones/icone-512.png', 'icones/apple-touch-icon.png', 'icones/zephir.jpg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
