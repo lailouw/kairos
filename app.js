@@ -398,6 +398,14 @@ function applyImport(){
   delete state.imports;
   save();closeSheet();toast('Données importées ✓');
 }
+// pour comprendre pourquoi une notif n'arrive pas : chaque maillon de la chaîne, lisible sur le téléphone
+function diagNotifs(){
+  const nom=id=>PROFILS[id]?PROFILS[id].nom:id;
+  const perm=!('Notification' in window)||!('PushManager' in window)?'impossibles ici (sur iPhone : ouvrir ZEPHIR depuis l\'écran d\'accueil)'
+    :{granted:'autorisées',denied:'refusées (à réautoriser dans les réglages du téléphone)',default:'pas encore demandées (touche l\'écran)'}[Notification.permission];
+  const gs=Object.keys(parts).map(g=>`Avec ${esc(g.split('_').filter(id=>id!==ME).map(nom).join(' et '))} : ${gOk[g]?'clé partagée OK':'en attente de la clé partagée'}, notifs connues pour ${esc(Object.keys(parts[g].subs||{}).map(nom).join(', ')||'personne')}`);
+  return ['Notifications : '+perm+(monAbo?' · cet appareil est abonné':' · cet appareil n\'est pas abonné'),...gs].join('<br>');
+}
 function openData(){
   importing=null;
   openSheet(`<div class="sh-head"><span class="tag t-ehpad">Mes données</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
@@ -408,6 +416,7 @@ function openData(){
     <div class="sh-foot"><button class="btn danger" data-act="importGo" id="impGo" hidden>Remplacer mes données</button></div>
     <h2 style="margin-top:22px">Synchro en ligne</h2>
     <p class="meta"><b>État : ${esc($('#sync').title||'—')}</b></p>
+    <p class="meta">${diagNotifs()}</p>
     ${sync?`<p class="meta">Connecté à GitHub : tes données passent d'un appareil à l'autre.</p>
     <div class="sh-foot"><button class="btn ghost" data-act="syncNow">Synchroniser</button><button class="btn danger" data-act="syncOff">Déconnecter</button></div>`
     :`<p class="meta">Colle ton jeton GitHub (droit « Gists » seulement), le même sur chaque appareil. La version la plus récente (en ligne ou sur cet appareil) est gardée, l'autre est mise de côté.</p>
