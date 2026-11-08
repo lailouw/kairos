@@ -280,3 +280,21 @@ select.inp option{background:#151821}
 /* ---------- Toast ---------- */
 #toast{position:fixed;left:50%;top:calc(76px + env(safe-area-inset-top));transform:translate(-50%,-10px);padding:10px 16px;border-radius:12px;font-size:13px;font-weight:600;z-index:70;opacity:0;visibility:hidden;transition:.25s;background:rgba(22,25,33,.9)}
 #toast.on{opacity:1;visibility:visible;transform:translate(-50%,0)}
+
+/* catégories créées dans « Mes réglages » : couleur passée en --c */
+.t-cat{background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c)}
+/* mes réglages */
+.rg-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.rg-row .inp{flex:1 1 110px;padding:9px 10px}
+.rg-row input[type=color]{width:38px;height:38px;border:0;border-radius:10px;background:none;padding:0;cursor:pointer}
+.rg-rest{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mut)}
+.rg-rest input{width:16px;height:16px;accent-color:var(--y)}
+.rg-h{display:flex;gap:4px}
+.rg-h input{background:rgba(0,0,0,.28);border:1px solid var(--gl);border-radius:10px;padding:7px 6px;color:var(--txt);color-scheme:dark;font-size:13px}
+.rg-qui{flex-basis:100%;align-items:center}
+.rg-qui .pill{padding:6px 10px;font-size:12px}
+.rg-note{color:var(--dim);font-size:12px}
+.rg-add{margin-top:10px;width:100%}
+.rg-sem{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;margin-top:10px}
+.rg-j{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mut)}
+.rg-j .inp{padding:8px}

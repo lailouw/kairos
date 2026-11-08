@@ -3,14 +3,25 @@ const START=6, END=24;
 const DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
 const DSH=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MONTHS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
-// Un profil par personne. La clé 'ehpad' = le travail à postes (Adopt chez Clara) : gardée pour ne pas toucher aux données ni au CSS.
+// Un profil par personne : ici seulement l'annuaire (nom, clé publique, où ranger ses données).
+// Tout le reste (postes, catégories, semaine type, partage par défaut) est dans les données chiffrées de chacun : state.reglages, écran « Mes réglages ».
 // Une plage peut être partagée avec d'autres profils (« Partagé avec ») : elle apparaît alors dans leurs calendriers.
 const PROFILS={
   // cle = la ligne « Mes données » → Créer mon mot de passe (clé publique . jeton + clés perso chiffrés par le mot de passe).
   // Vide : le mot de passe est le jeton lui-même, et pas de synchro tant que le mot de passe n'est pas créé (rien n'est envoyé en clair).
-  // groupe = profils avec qui les plages 'love' sont partagées par défaut (décochable dans la plage).
-  moi:{nom:'Laïlou',cle:'',groupe:'couple',store:'zephir-state',file:'zephir.json',
-    SHIFTS:{
+  // groupe : sert seulement aux anciennes plages 'love' sans « Partagé avec » (partagées avec le groupe, comme avant).
+  moi:{nom:'Laïlou',cle:'',groupe:'couple',store:'zephir-state',file:'zephir.json'},
+  clara:{nom:'Clara',cle:'',groupe:'couple',store:'zephir-state-clara',file:'zephir-clara.json'},
+  marvin:{nom:'Marvin',cle:'',store:'zephir-state-marvin',file:'zephir-marvin.json'}
+};
+// Réglages d'un nouveau profil. La catégorie 'ehpad' = le travail à postes (nom gardé pour ne pas toucher aux données ni au CSS) ; 'ehpad' et 'other' existent toujours.
+// semaine = poste habituel par jour (0 = dimanche) ; cats[x].qui = profils avec qui une plage de cette catégorie est partagée par défaut.
+const REGLAGES_VIDE={postes:{Repos:{name:'Repos',rest:1}},
+  cats:{ehpad:{name:'Travail',color:'#7C9CFF'},other:{name:'Autres',color:'#E0B36A',ph:'Ex : courses, ménage, sport'}},semaine:['','','','','','','']};
+// shortcut: réglages des 3 premiers profils, recopiés une seule fois dans leurs données (planning compris). À effacer quand chacun a ouvert la nouvelle version.
+const REGLAGES0={
+  moi:{semaine:['','','','','','',''],
+    postes:{
       M70:{name:'Matin',segs:[['06:30','14:30']]},
       C96:{name:'Coupé',segs:[['07:30','12:30'],['17:30','20:00']]},
       S08:{name:'Soir',segs:[['12:30','20:00']]},
@@ -18,21 +29,20 @@ const PROFILS={
       RF:{name:'Repos férié',rest:1},
       RTP:{name:'Repos temps partiel',rest:1}
     },
-    CATS:{
+    cats:{
       ehpad:{name:'EHPAD',color:'#7C9CFF'},
-      broflip:{name:'BroFliping',color:'#5FD4AE'},
-      love:{name:'Copine & chat',color:'#F0A0C0'},
-      other:{name:'Autres',color:'#E0B36A'}
-    },
-    PH:{broflip:'Ex : récup + annonces',love:'Ex : soirée en amoureux',other:'Ex : courses, ménage, sport'}},
-  clara:{nom:'Clara',cle:'',groupe:'couple',store:'zephir-state-clara',file:'zephir-clara.json',dimRepos:1,
-    // planning Adopt recopié de la feuille papier : affiché par défaut, un choix fait dans l'appli passe devant
-    PLANNING:{
+      broflip:{name:'BroFliping',color:'#5FD4AE',ph:'Ex : récup + annonces'},
+      love:{name:'Copine & chat',color:'#F0A0C0',ph:'Ex : soirée en amoureux',qui:['clara']},
+      other:{name:'Autres',color:'#E0B36A',ph:'Ex : courses, ménage, sport'}
+    }},
+  clara:{semaine:['Repos','','','','','',''],
+    // planning Adopt de la feuille papier : recopié dans ses postes du jour (un choix déjà fait dans l'appli passe devant)
+    planning:{
       '2026-11-09':'14:00-18:00','2026-11-10':'Journée','2026-11-11':'Férié','2026-11-12':'Journée','2026-11-13':'11:00-19:00','2026-11-14':'Continu',
       '2026-11-16':'Aprem','2026-11-17':'Journée','2026-11-18':'13:00-19:00','2026-11-19':'Congé','2026-11-20':'10:00-18:00','2026-11-21':'Continu',
       '2026-11-23':'Aprem','2026-11-24':'Journée','2026-11-25':'13:00-19:00','2026-11-26':'Congé','2026-11-27':'Journée','2026-11-28':'Continu'
     },
-    SHIFTS:{
+    postes:{
       Aprem:{name:'Après-midi',segs:[['14:00','19:00']]},
       'Journée':{name:'Matin + aprem',segs:[['10:00','12:30'],['14:00','19:00']]},
       Continu:{name:'Sans pause',segs:[['10:00','18:30']]},
@@ -40,29 +50,26 @@ const PROFILS={
       'Férié':{name:'Férié',rest:1},
       Repos:{name:'Repos',rest:1}
     },
-    CATS:{
+    cats:{
       ehpad:{name:'Adopt',color:'#7C9CFF'},
-      love:{name:'Ensemble & chat',color:'#F0A0C0'},
-      other:{name:'Autres',color:'#E0B36A'}
-    },
-    PH:{love:'Ex : soirée en amoureux',other:'Ex : courses, ménage, sport'}},
+      love:{name:'Ensemble & chat',color:'#F0A0C0',ph:'Ex : soirée en amoureux',qui:['moi']},
+      other:{name:'Autres',color:'#E0B36A',ph:'Ex : courses, ménage, sport'}
+    }},
   // Monte Doro : 17h-22h tous les jours sauf mercredi et jeudi (modifiable jour par jour)
-  marvin:{nom:'Marvin',cle:'',store:'zephir-state-marvin',file:'zephir-marvin.json',
-    SEMAINE:['Soir','Soir','Soir','Repos','Repos','Soir','Soir'],
-    SHIFTS:{Soir:{name:'Soir',segs:[['17:00','22:00']]},Repos:{name:'Repos',rest:1}},
-    CATS:{
+  marvin:{semaine:['Soir','Soir','Soir','Repos','Repos','Soir','Soir'],
+    postes:{Soir:{name:'Soir',segs:[['17:00','22:00']]},Repos:{name:'Repos',rest:1}},
+    cats:{
       ehpad:{name:'Monte Doro',color:'#7C9CFF'},
-      broflip:{name:'BroFliping',color:'#5FD4AE'},
-      love:{name:'Copain & chat',color:'#F0A0C0'},
-      other:{name:'Autres',color:'#E0B36A'}
-    },
-    PH:{broflip:'Ex : récup + annonces',love:'Ex : soirée avec mon copain',other:'Ex : courses, ménage, sport'}}
+      broflip:{name:'BroFliping',color:'#5FD4AE',ph:'Ex : récup + annonces'},
+      love:{name:'Copain & chat',color:'#F0A0C0',ph:'Ex : soirée avec mon copain'},
+      other:{name:'Autres',color:'#E0B36A',ph:'Ex : courses, ménage, sport'}
+    }}
 };
 // renommage KairOs → ZEPHIR : une seule fois, on recopie les anciennes données 'kairos-…' en 'zephir-…' (les anciennes ne sont jamais effacées)
 try{if(!localStorage.getItem('zephir-migre')){for(const k of Object.keys(localStorage))if(k.startsWith('kairos-')&&localStorage.getItem('zephir-'+k.slice(7))===null)localStorage.setItem('zephir-'+k.slice(7),localStorage.getItem(k));localStorage.setItem('zephir-migre','1')}}catch(e){}
 let profil=null;try{profil=localStorage.getItem('zephir-profil')}catch(e){}
 if(!PROFILS[profil])profil=null; // pas encore connecté : page de connexion
-const P=PROFILS[profil||'moi'],{SHIFTS,CATS,PH}=P;
+const P=PROFILS[profil||'moi'];let SHIFTS,CATS; // SHIFTS, CATS : les réglages du profil (state.reglages), remis par fixState()
 const ICON_FS='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
 const ICON_EXIT='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
 
@@ -88,16 +95,27 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');
 
 /* ---------- state ---------- */
 function seed(){return {v:1,updatedAt:0,shifts:{},blocks:[],ehpad:{},urgent:[]}}
-function valid(s){return s&&typeof s==='object'&&s.shifts&&typeof s.shifts==='object'&&Array.isArray(s.blocks)&&Array.isArray(s.urgent)}
+const okRegl=r=>!r||(typeof r==='object'&&r.postes&&typeof r.postes==='object'&&r.cats&&r.cats.ehpad&&r.cats.other&&Array.isArray(r.semaine)&&r.semaine.length===7);
+function valid(s){return s&&typeof s==='object'&&s.shifts&&typeof s.shifts==='object'&&Array.isArray(s.blocks)&&Array.isArray(s.urgent)&&okRegl(s.reglages)}
+// à rappeler à chaque fois que state est remplacé. Sans réglages (données d'avant) : on recopie ceux de départ, sans toucher à updatedAt (sinon une copie vide gagnerait sur celle en ligne)
+function fixState(){
+  if(!state.ehpad)state.ehpad={};
+  if(!state.reglages){
+    const r=JSON.parse(JSON.stringify(REGLAGES0[profil||'moi']||REGLAGES_VIDE));
+    for(const k in r.planning||{})if(!(k in state.shifts))state.shifts[k]=r.planning[k];
+    delete r.planning;state.reglages=r;
+  }
+  SHIFTS=state.reglages.postes;CATS=state.reglages.cats;
+}
 let state=null;
 // ancienne clé 'odt-state' relue si 'zephir-state' n'existe pas encore (jamais effacée)
 try{state=JSON.parse(localStorage.getItem(P.store)||(P.store==='zephir-state'?localStorage.getItem('odt-state'):null))}catch(e){}
 if(!valid(state))state=seed();
-if(!state.ehpad)state.ehpad={};
+fixState();
 // plages partagées : b.qui = profils concernés (triés, moi compris). Chaque groupe de personnes (gid = 'clara_moi', 'marvin_moi'…)
 // a son fichier commun : parts[gid] = { updatedAt, blocks, dirty = pas encore envoyé }
 const ME=profil||'moi',PSTORE='zephir-partage-'+ME;
-const groupeP=()=>Object.keys(PROFILS).filter(id=>P.groupe&&PROFILS[id].groupe===P.groupe).sort(); // partage par défaut des plages 'love'
+const groupeP=()=>Object.keys(PROFILS).filter(id=>P.groupe&&PROFILS[id].groupe===P.groupe).sort(); // seulement pour les anciennes plages 'love' sans qui
 let parts=null;try{parts=JSON.parse(localStorage.getItem(PSTORE))}catch(e){}
 if(!parts||typeof parts!=='object'){parts={};try{const o=P.groupe==='couple'&&JSON.parse(localStorage.getItem('zephir-ensemble'));if(o&&Array.isArray(o.blocks))parts.clara_moi=o}catch(e){}} // ancien stockage du couple
 const sjson={};for(const g in parts)sjson[g]=JSON.stringify(parts[g].blocks);
@@ -105,7 +123,7 @@ sortBlocks();persistLocal();
 
 const allBlocks=()=>state.blocks.concat(...Object.values(parts).map(p=>p.blocks));
 const avecNoms=b=>(b.qui||[]).filter(id=>id!==ME&&PROFILS[id]).map(id=>PROFILS[id].nom).join(' et '); // les autres profils d'une plage partagée
-const catOf=c=>CATS[c]?c:'other'; // catégorie qu'un autre profil n'a pas (BroFliping chez Clara) : affichée en « Autres »
+const catOf=c=>Object.hasOwn(CATS,c)?c:'other'; // catégorie qu'un autre profil n'a pas (BroFliping chez Clara) : affichée en « Autres »
 // range chaque plage au bon endroit (aussi les anciennes plages 'love' sans qui : partagées avec le groupe, comme avant)
 function sortBlocks(){
   const m=new Map();Object.values(parts).forEach(p=>p.blocks.forEach(b=>m.set(b.id,b)));state.blocks.forEach(b=>m.set(b.id,b));
@@ -206,7 +224,7 @@ async function pull(first){
     let changed=false;
     if(r&&r.updatedAt>state.updatedAt){ // la version la plus récente gagne, jamais une version vide (updatedAt 0)
       try{localStorage.setItem('zephir-avant-synchro',JSON.stringify(state))}catch(e){}
-      state=r;if(!state.ehpad)state.ehpad={};changed=true;
+      state=r;fixState();changed=true;
     }
     gOk={};
     const mes=new Set(Object.keys(parts));
@@ -376,14 +394,15 @@ function applyImport(){
   if(!importing)return;
   try{localStorage.setItem('zephir-avant-import',JSON.stringify(state))}catch(e){} // filet de sécurité
   state=JSON.parse(JSON.stringify(importing));importing=null;
-  if(!state.ehpad)state.ehpad={};
+  fixState();
   delete state.imports;
   save();closeSheet();toast('Données importées ✓');
 }
 function openData(){
   importing=null;
   openSheet(`<div class="sh-head"><span class="tag t-ehpad">Mes données</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
-    <h2>Sauvegarde</h2><p class="meta">Tes données sont enregistrées sur cet appareil. Garde une copie de secours de temps en temps.</p>
+    <div class="sh-foot" style="margin-top:6px"><button class="btn" data-act="reglages">Mes réglages (catégories, postes, semaine type)</button></div>
+    <h2 style="margin-top:22px">Sauvegarde</h2><p class="meta">Tes données sont enregistrées sur cet appareil. Garde une copie de secours de temps en temps.</p>
     <div class="sh-foot"><button class="btn" data-act="export">↓ Exporter</button><label class="btn ghost" style="text-align:center;cursor:pointer">↑ Importer<input type="file" accept=".json,application/json" id="impFile" hidden></label></div>
     <p class="meta" id="impInfo" style="margin-top:14px"></p><div class="err" id="impErr"></div>
     <div class="sh-foot"><button class="btn danger" data-act="importGo" id="impGo" hidden>Remplacer mes données</button></div>
@@ -401,16 +420,79 @@ function openData(){
     ${backupOf()?`<div class="sh-foot"><button class="btn ghost" data-act="restore">↺ Revenir à la version d'avant (${backupOf().blocks.length} plages)</button></div>`:''}`,{kind:'data'});
 }
 
+/* ---------- mes réglages (rangés dans state.reglages, donc chiffrés et synchronisés comme le reste) ---------- */
+const autres=()=>Object.keys(PROFILS).filter(id=>id!==ME);
+const posteRow=(code,p)=>{const g=(p&&p.segs)||[];
+  return `<div class="rg-row" data-kind="poste" data-old="${esc(code)}">
+    <input class="inp" name="code" value="${esc(code)}" placeholder="Code (ex : Matin)" maxlength="14" aria-label="Code du poste">
+    <input class="inp" name="nom" value="${esc(p?p.name:'')}" placeholder="Nom" maxlength="30" aria-label="Nom du poste">
+    <label class="rg-rest"><input type="checkbox" name="rest"${p&&p.rest?' checked':''}> Repos</label>
+    <span class="rg-h"><input type="time" name="s1" step="900" value="${g[0]?g[0][0]:''}" aria-label="Début"><input type="time" name="e1" step="900" value="${g[0]?g[0][1]:''}" aria-label="Fin"></span>
+    <span class="rg-h"><input type="time" name="s2" step="900" value="${g[1]?g[1][0]:''}" aria-label="Début après la pause"><input type="time" name="e2" step="900" value="${g[1]?g[1][1]:''}" aria-label="Fin après la pause"></span>
+    <button type="button" class="del" data-act="rgDel" aria-label="Supprimer ce poste">×</button></div>`};
+const catRow=(id,c)=>`<div class="rg-row" data-kind="cat" data-id="${esc(id)}">
+    <input type="color" name="color" value="${esc(c.color)}" aria-label="Couleur">
+    <input class="inp" name="nom" value="${esc(c.name)}" placeholder="${id==='ehpad'?'Ton travail (ex : EHPAD)':'Nom'}" maxlength="24" aria-label="Nom de la catégorie">
+    ${id==='ehpad'||id==='other'?'':'<button type="button" class="del" data-act="rgDel" aria-label="Supprimer cette catégorie">×</button>'}
+    ${id==='ehpad'?'<small class="rg-note">Travail à postes</small>':autres().length?`<div class="pills rg-qui"><small class="rg-note">Partagée par défaut avec</small>${autres().map(q=>`<label><input type="checkbox" name="qui" value="${q}"${(c.qui||[]).includes(q)?' checked':''}><span class="pill">${esc(PROFILS[q].nom)}</span></label>`).join('')}</div>`:''}</div>`;
+function openReglages(){
+  const r=state.reglages,codes=Object.keys(r.postes);
+  const jours=[1,2,3,4,5,6,0].map(j=>`<label class="rg-j"><span>${DSH[(j+6)%7]}</span><select class="inp" name="j${j}"><option value="">—</option>${codes.map(c=>`<option${r.semaine[j]===c?' selected':''}>${esc(c)}</option>`).join('')}</select></label>`).join('');
+  openSheet(`<div class="sh-head"><span class="tag t-ehpad">Mes réglages</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
+    <form data-form="saveReglages">
+    <h2>Catégories</h2><p class="meta">Les couleurs de tes plages. Une catégorie partagée par défaut coche ces personnes quand tu crées une plage.</p>
+    <div id="rgCats">${Object.entries(r.cats).map(([id,c])=>catRow(id,c)).join('')}</div>
+    <button type="button" class="btn ghost rg-add" data-act="rgAdd" data-kind="cat">+ Catégorie</button>
+    <h2 style="margin-top:22px">Postes de travail</h2><p class="meta">Les heures de chaque poste (la 2e ligne d'heures = après une pause), ou Repos.</p>
+    <div id="rgPostes">${Object.entries(r.postes).map(([c,p])=>posteRow(c,p)).join('')}</div>
+    <button type="button" class="btn ghost rg-add" data-act="rgAdd" data-kind="poste">+ Poste</button>
+    <h2 style="margin-top:22px">Semaine type</h2><p class="meta">Ton poste habituel, mis tout seul quand tu n'as rien choisi pour le jour.</p>
+    <div class="rg-sem">${jours}</div>
+    <div class="err" id="rgErr"></div>
+    <div class="sh-foot"><button type="button" class="btn ghost" data-act="close">Annuler</button><button class="btn">Enregistrer</button></div>
+    </form>`,{kind:'reglages'});
+}
+function saveReglages(f){
+  const err=t=>{$('#rgErr').textContent=t};
+  const old=state.reglages,postes={},cats={},ren={};
+  for(const row of f.querySelectorAll('.rg-row[data-kind=poste]')){
+    const q=n=>row.querySelector(`[name=${n}]`),code=q('code').value.trim(),name=q('nom').value.trim()||code;
+    if(!code)return err("Chaque poste a besoin d'un code.");
+    if(Object.hasOwn(postes,code)||isHours(code))return err(`Le code « ${code} » est déjà pris.`);
+    if(q('rest').checked)postes[code]={name,rest:1};
+    else{
+      const segs=[];
+      for(const [a,b] of [['s1','e1'],['s2','e2']]){const s=q(a).value,e=q(b).value;if(!s&&!e)continue;
+        if(!s||!e||endMin(e)<=t2m(s))return err(`Poste « ${code} » : l'heure de fin doit être après l'heure de début.`);segs.push([s,e])}
+      if(!segs.length)return err(`Poste « ${code} » : mets ses heures, ou coche Repos.`);
+      postes[code]={name,segs};
+    }
+    const o=row.dataset.old;if(o&&o!==code)ren[o]=code;
+  }
+  for(const row of f.querySelectorAll('.rg-row[data-kind=cat]')){
+    const id=row.dataset.id,name=row.querySelector('[name=nom]').value.trim(),color=row.querySelector('[name=color]').value;
+    if(!name)return err("Chaque catégorie a besoin d'un nom.");
+    const c={...old.cats[id],name,color:/^#[0-9a-f]{6}$/i.test(color)?color:'#E0B36A'};
+    const qui=[...row.querySelectorAll('[name=qui]:checked')].map(x=>x.value);if(qui.length)c.qui=qui;else delete c.qui;
+    cats[id]=c;
+  }
+  // poste renommé : les jours déjà choisis suivent
+  for(const k in state.shifts)if(Object.hasOwn(ren,state.shifts[k]))state.shifts[k]=ren[state.shifts[k]];
+  const semaine=[0,1,2,3,4,5,6].map(j=>{const c=f.elements['j'+j].value;return Object.hasOwn(ren,c)?ren[c]:c});
+  state.reglages={postes,cats,semaine};fixState();
+  // shortcut: un poste supprimé reste affiché par son code les jours où il était choisi (sans heures). Proposer de les vider si ça gêne.
+  save();closeSheet();toast('Réglages enregistrés ✓');
+}
+
 /* ---------- planning ---------- */
 let curMon=mondayOf(new Date());
 let tab='plan';
-// poste du jour : un code de SHIFTS, ou des heures du jour 'HH:MM-HH:MM' ; dimanche = Repos si rien n'est mis (profil dimRepos)
-// ordre : choix fait dans l'appli ('' = « Pas encore connu » choisi exprès) > planning papier (P.PLANNING) > dimanche Repos
-// P.SEMAINE = poste habituel par jour de la semaine (0 = dimanche), après le planning papier
-const defOf=k=>(P.PLANNING&&P.PLANNING[k])||(P.SEMAINE&&P.SEMAINE[parse(k).getDay()])||(P.dimRepos&&parse(k).getDay()===0?'Repos':'');
+// poste du jour : un code de SHIFTS, ou des heures du jour 'HH:MM-HH:MM'
+// ordre : choix fait dans l'appli ('' = « Pas encore connu » choisi exprès) > semaine type des réglages (0 = dimanche)
+const defOf=k=>state.reglages.semaine[parse(k).getDay()]||'';
 const codeOf=k=>k in state.shifts?state.shifts[k]:defOf(k);
 const isHours=c=>/^\d\d:\d\d-\d\d:\d\d$/.test(c||'');
-const shOf=c=>SHIFTS[c]||(isHours(c)?{name:'Heures du jour',segs:[c.split('-')]}:null);
+const shOf=c=>(Object.hasOwn(SHIFTS,c||'')&&SHIFTS[c])||(isHours(c)?{name:'Heures du jour',segs:[c.split('-')]}:null);
 const codeLbl=c=>isHours(c)?hfmt(t2m(c.slice(0,5)))+'-'+hfmt(endMin(c.slice(6))):c;
 
 function itemsForDay(k){
@@ -418,7 +500,7 @@ function itemsForDay(k){
   const code=codeOf(k),sh=shOf(code);
   const ex=state.ehpad[k]||{};
   if(sh&&sh.segs)sh.segs.forEach(s=>out.push({type:'ehpad',cat:'ehpad',date:k,s:t2m(s[0]),e:endMin(s[1]),title:CATS.ehpad.name,code,imp:!!ex.imp,tasks:ex.tasks||[]}));
-  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:catOf(b.cat),id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.cat==='broflip'?'BroFliping':(b.title||CATS[catOf(b.cat)].name),imp:!!b.imp,avec:avecNoms(b),tasks:b.tasks||[]}));
+  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:catOf(b.cat),id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.cat==='broflip'&&Object.hasOwn(CATS,'broflip')?CATS.broflip.name:(b.title||CATS[catOf(b.cat)].name),imp:!!b.imp,avec:avecNoms(b),tasks:b.tasks||[]}));
   return out.sort((a,b)=>a.s-b.s||b.e-a.e);
 }
 function layout(items){
@@ -437,7 +519,7 @@ function blockHTML(it){
   const top=(s-START*60)/60,h=(e-s)/60,w=100/it.n,left=it.lane*w;
   const done=it.tasks.filter(t=>t.done).length;
   const prog=it.tasks.length&&h>=1.5?`<span class="prog">✓ ${done}/${it.tasks.length}</span>`:'';
-  return `<div class="blk c-${it.cat}${it.imp?' has-imp':''}${h<1?' short':''}" style="top:calc(${top} * var(--h) + 1px);height:calc(${h} * var(--h) - 2px);left:calc(${left}% + 2px);width:calc(${w}% - 4px)" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}">${it.imp?'<span class="imp" title="Important"></span>':''}<span class="bt">${esc(it.title)}</span>${it.avec?`<span class="ba">avec ${esc(it.avec)}</span>`:''}<span class="bh">${hfmt(it.s)}–${hfmt(it.e)}</span>${prog}</div>`;
+  return `<div class="blk c-${it.cat}${it.imp?' has-imp':''}${h<1?' short':''}" style="--c:${CATS[it.cat].color};top:calc(${top} * var(--h) + 1px);height:calc(${h} * var(--h) - 2px);left:calc(${left}% + 2px);width:calc(${w}% - 4px)" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}">${it.imp?'<span class="imp" title="Important"></span>':''}<span class="bt">${esc(it.title)}</span>${it.avec?`<span class="ba">avec ${esc(it.avec)}</span>`:''}<span class="bh">${hfmt(it.s)}–${hfmt(it.e)}</span>${prog}</div>`;
 }
 function weekDays(){return [...Array(7)].map((_,i)=>addDays(curMon,i))}
 function renderPlan(){
@@ -469,7 +551,7 @@ function renderStats(){
   const tot=Object.values(t).reduce((a,b)=>a+b,0);
   $('#pStats').innerHTML=`<h3><span>Heures de la semaine</span><em>${dur(tot)}</em></h3>
     <div class="bar">${Object.keys(CATS).map(c=>t[c]?`<i style="width:${t[c]/tot*100}%;background:${CATS[c].color}"></i>`:'').join('')}</div>
-    <div class="st">${Object.keys(CATS).map(c=>`<div><span><i style="background:${CATS[c].color}"></i>${CATS[c].name}</span><b>${dur(t[c])}<em>${tot?Math.round(t[c]/tot*100):0}%</em></b></div>`).join('')}</div>`;
+    <div class="st">${Object.keys(CATS).map(c=>`<div><span><i style="background:${CATS[c].color}"></i>${esc(CATS[c].name)}</span><b>${dur(t[c])}<em>${tot?Math.round(t[c]/tot*100):0}%</em></b></div>`).join('')}</div>`;
 }
 
 /* now / next panel */
@@ -566,7 +648,7 @@ function openDetails(type,k,id,focus){
   }else{cat=catOf(ref.cat);title=ref.title||CATS[cat].name;time=hfmt(t2m(ref.start))+' – '+hfmt(endMin(ref.end));
     const avec=avecNoms(ref);if(avec)time+=' · avec '+avec}
   const tasks=ref.tasks||[],done=tasks.filter(t=>t.done).length;
-  const html=`<div class="sh-head"><span class="tag t-${cat}">${CATS[cat].name}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
+  const html=`<div class="sh-head"><span class="tag t-cat" style="--c:${CATS[cat].color}">${esc(CATS[cat].name)}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <h2>${esc(title)}</h2><p class="meta">${dayLabel(k)} · ${time}</p>
     <button class="impbtn${ref.imp?' on':''}" data-act="toggleImp"><span class="impdot"></span>${ref.imp?'Important':'Marquer comme important'}</button>
     <div class="tasks-h"><span>À faire</span><span>${done}/${tasks.length}</span></div>
@@ -583,13 +665,13 @@ function openEditor(opts){
   const v=b?{...b}:{cat:bc[0],title:'',date:opts.date,start:opts.start,end:opts.end,imp:false};
   const mon=mondayOf(parse(v.date));
   const dayOpts=[...Array(7)].map((_,i)=>{const k=key(addDays(mon,i));return `<option value="${k}"${k===v.date?' selected':''}>${dayLabel(k)}</option>`}).join('');
-  const qui=v.qui||(v.cat==='love'?groupeP():[]);
+  const qui=v.qui||CATS[catOf(v.cat)].qui||[];
   const avec=Object.keys(PROFILS).filter(id=>id!==ME).map(id=>`<label><input type="checkbox" name="qui" value="${id}"${qui.includes(id)?' checked':''}><span class="pill">${esc(PROFILS[id].nom)}</span></label>`).join('');
-  const pills=bc.map(c=>`<label><input type="radio" name="cat" value="${c}"${v.cat===c?' checked':''}><span class="pill"><i style="background:${CATS[c].color}"></i>${CATS[c].name}</span></label>`).join('');
-  const html=`<div class="sh-head"><span class="tag t-${v.cat}" id="edTag">${b?'Modifier la plage':'Nouvelle plage'}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
+  const pills=bc.map(c=>`<label><input type="radio" name="cat" value="${c}"${v.cat===c?' checked':''}><span class="pill"><i style="background:${CATS[c].color}"></i>${esc(CATS[c].name)}</span></label>`).join('');
+  const html=`<div class="sh-head"><span class="tag t-cat" style="--c:${CATS[catOf(v.cat)].color}" id="edTag">${b?'Modifier la plage':'Nouvelle plage'}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <form data-form="saveBlock">
       <div class="field"><span class="lbl">Catégorie</span><div class="pills">${pills}</div></div>
-      <div class="field"><span class="lbl">Titre</span><input class="inp" name="title" value="${esc(v.title)}" placeholder="${PH[v.cat]||''}" maxlength="60" autocomplete="off"></div>
+      <div class="field"><span class="lbl">Titre</span><input class="inp" name="title" value="${esc(v.title)}" placeholder="${esc(CATS[catOf(v.cat)].ph||'')}" maxlength="60" autocomplete="off"></div>
       <div class="field"><span class="lbl">Partagé avec</span><div class="pills">${avec}</div></div>
       <div class="field"><span class="lbl">Jour</span><select class="inp" name="date">${dayOpts}</select></div>
       <div class="field row2"><div><span class="lbl">Début</span><input class="inp" type="time" name="start" step="900" value="${v.start}" required></div><div><span class="lbl">Fin</span><input class="inp" type="time" name="end" step="900" value="${v.end}" required></div></div>
@@ -603,7 +685,7 @@ function openEditor(opts){
 function openShift(k){
   const cur=codeOf(k),hrs=isHours(cur)?cur.split('-'):['',''];
   const btn=(code)=>{const s=SHIFTS[code];const sub=s.segs?s.segs.map(x=>hfmt(t2m(x[0]))+'–'+hfmt(t2m(x[1]))).join(' / '):'Pas de travail';
-    return `<button class="shb ${s.segs?'work':''}${cur===code?' on':''}" data-act="setShift" data-k="${k}" data-code="${esc(code)}"><b>${esc(code)}</b><small>${s.name} · ${sub}</small></button>`};
+    return `<button class="shb ${s.segs?'work':''}${cur===code?' on':''}" data-act="setShift" data-k="${k}" data-code="${esc(code)}"><b>${esc(code)}</b><small>${esc(s.name)} · ${sub}</small></button>`};
   const html=`<div class="sh-head"><span class="tag t-ehpad">Poste ${esc(CATS.ehpad.name)}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <h2>${dayLabel(k)}</h2><p class="meta">Choisis ton poste pour ce jour.</p>
     <div class="shgrid">${Object.keys(SHIFTS).map(btn).join('')}<button class="shb wide${!cur?' on':''}" data-act="setShift" data-k="${k}" data-code="">Pas encore connu</button></div>
@@ -662,10 +744,14 @@ document.addEventListener('click',e=>{
     case 'fs':toggleFS();break;
     case 'close':closeSheet();break;
     case 'data':openData();break;
+    case 'reglages':openReglages();break;
+    case 'rgAdd':{const cat=a.dataset.kind==='cat';$(cat?'#rgCats':'#rgPostes').insertAdjacentHTML('beforeend',cat?catRow('c'+uid(),{name:'',color:'#9AA4B8'}):posteRow('',null));
+      const r=$(cat?'#rgCats':'#rgPostes').lastElementChild;r.querySelector('[name=nom],[name=code]').focus();break}
+    case 'rgDel':a.closest('.rg-row').remove();break;
     case 'export':exportData();break;
     case 'importGo':applyImport();break;
     case 'syncNow':closeSheet();pull();break;
-    case 'restore':{const b=backupOf();if(!b)break;state=b;if(!state.ehpad)state.ehpad={};save();closeSheet();toast('Version précédente remise ✓');break}
+    case 'restore':{const b=backupOf();if(!b)break;state=b;fixState();save();closeSheet();toast('Version précédente remise ✓');break}
     case 'syncOff':sync=null;saveSync();pulled=false;setSync('local');openData();break;
     // les clés ne sont effacées que si le mot de passe peut les rendre (ligne cle dans l'appli)
     case 'logout':try{localStorage.removeItem('zephir-profil');if(P.cle)localStorage.removeItem('zephir-cles-'+profil)}catch(e){}location.reload();break;
@@ -689,9 +775,9 @@ document.addEventListener('click',e=>{
 document.addEventListener('change',e=>{
   if(e.target.id==='impFile'&&e.target.files[0]){readImport(e.target.files[0]);return}
   if(e.target.name==='cat'&&sheetCtx&&sheetCtx.kind==='editor'){
-    const v=e.target.value,tag=$('#edTag');tag.className='tag t-'+v;
-    const ti=$('#sheet input[name=title]');if(ti)ti.placeholder=PH[v]||'';
-    if(v==='love')groupeP().forEach(id=>{const x=$(`#sheet input[name=qui][value="${id}"]`);if(x)x.checked=true}); // plage en couple : partagée par défaut
+    const v=e.target.value;$('#edTag').style.setProperty('--c',CATS[v].color);
+    const ti=$('#sheet input[name=title]');if(ti)ti.placeholder=CATS[v].ph||'';
+    (CATS[v].qui||[]).forEach(id=>{const x=$(`#sheet input[name=qui][value="${id}"]`);if(x)x.checked=true}); // partage par défaut de la catégorie (réglages)
   }
 });
 
@@ -717,6 +803,7 @@ document.addEventListener('submit',e=>{
       const wk=mondayOf(parse(data.date));if(key(wk)!==key(curMon))curMon=wk;
       save();openDetails('block',data.date,id);break;
     }
+    case 'saveReglages':saveReglages(f);break;
     case 'syncOn':{const t=f.t.value.trim();if(t)connect(t);break}
     case 'login':login(f.nom.value,f.t&&f.t.value.trim());break;
     case 'mkPw':{
