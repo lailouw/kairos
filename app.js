@@ -6,8 +6,10 @@ const MONTHS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.
 // Un profil par personne. La clé 'ehpad' = le travail à postes (Adopt chez Clara) : gardée pour ne pas toucher aux données ni au CSS.
 // 'love' = temps ensemble : ces plages vont dans le fichier partagé du Gist.
 const PROFILS={
-  // cle = le jeton GitHub chiffré avec le mot de passe (« Mes données » → Créer mon mot de passe). Vide : le mot de passe est le jeton lui-même.
-  moi:{nom:'Laïlou',cle:'',store:'zephir-state',file:'zephir.json',
+  // cle = la ligne « Mes données » → Créer mon mot de passe (clé publique . jeton + clés perso chiffrés par le mot de passe).
+  // Vide : le mot de passe est le jeton lui-même, et pas de synchro tant que le mot de passe n'est pas créé (rien n'est envoyé en clair).
+  // groupe = profils qui partagent les plages 'love' (fichier commun chiffré, lisible par eux seuls). Sans groupe : 'love' reste perso.
+  moi:{nom:'Laïlou',cle:'',groupe:'couple',store:'zephir-state',file:'zephir.json',
     SHIFTS:{
       M70:{name:'Matin',segs:[['06:30','14:30']]},
       C96:{name:'Coupé',segs:[['07:30','12:30'],['17:30','20:00']]},
@@ -23,7 +25,7 @@ const PROFILS={
       other:{name:'Autres',color:'#E0B36A'}
     },
     PH:{broflip:'Ex : récup + annonces',love:'Ex : soirée en amoureux',other:'Ex : courses, ménage, sport'}},
-  clara:{nom:'Clara',cle:'',store:'zephir-state-clara',file:'zephir-clara.json',dimRepos:1,
+  clara:{nom:'Clara',cle:'',groupe:'couple',store:'zephir-state-clara',file:'zephir-clara.json',dimRepos:1,
     // planning Adopt recopié de la feuille papier : affiché par défaut, un choix fait dans l'appli passe devant
     PLANNING:{
       '2026-11-09':'14:00-18:00','2026-11-10':'Journée','2026-11-11':'Férié','2026-11-12':'Journée','2026-11-13':'11:00-19:00','2026-11-14':'Continu',
@@ -43,7 +45,18 @@ const PROFILS={
       love:{name:'Ensemble & chat',color:'#F0A0C0'},
       other:{name:'Autres',color:'#E0B36A'}
     },
-    PH:{love:'Ex : soirée en amoureux',other:'Ex : courses, ménage, sport'}}
+    PH:{love:'Ex : soirée en amoureux',other:'Ex : courses, ménage, sport'}},
+  // Monte Doro : 17h-22h tous les jours sauf mercredi et jeudi (modifiable jour par jour)
+  marvin:{nom:'Marvin',cle:'',store:'zephir-state-marvin',file:'zephir-marvin.json',
+    SEMAINE:['Soir','Soir','Soir','Repos','Repos','Soir','Soir'],
+    SHIFTS:{Soir:{name:'Soir',segs:[['17:00','22:00']]},Repos:{name:'Repos',rest:1}},
+    CATS:{
+      ehpad:{name:'Monte Doro',color:'#7C9CFF'},
+      broflip:{name:'BroFliping',color:'#5FD4AE'},
+      love:{name:'Copain & chat',color:'#F0A0C0'},
+      other:{name:'Autres',color:'#E0B36A'}
+    },
+    PH:{broflip:'Ex : récup + annonces',love:'Ex : soirée avec mon copain',other:'Ex : courses, ménage, sport'}}
 };
 // renommage KairOs → ZEPHIR : une seule fois, on recopie les anciennes données 'kairos-…' en 'zephir-…' (les anciennes ne sont jamais effacées)
 try{if(!localStorage.getItem('zephir-migre')){for(const k of Object.keys(localStorage))if(k.startsWith('kairos-')&&localStorage.getItem('zephir-'+k.slice(7))===null)localStorage.setItem('zephir-'+k.slice(7),localStorage.getItem(k));localStorage.setItem('zephir-migre','1')}}catch(e){}
@@ -81,8 +94,9 @@ let state=null;
 try{state=JSON.parse(localStorage.getItem(P.store)||(P.store==='zephir-state'?localStorage.getItem('odt-state'):null))}catch(e){}
 if(!valid(state))state=seed();
 if(!state.ehpad)state.ehpad={};
-// plages « ensemble » : communes aux deux profils, { updatedAt, blocks, dirty = pas encore envoyé }
-let shared=null;try{shared=JSON.parse(localStorage.getItem('zephir-ensemble'))}catch(e){}
+// plages « ensemble » : communes aux profils du même groupe, { updatedAt, blocks, dirty = pas encore envoyé }
+const SSTORE=P.groupe==='couple'?'zephir-ensemble':'zephir-ensemble-'+P.groupe;
+let shared=null;try{if(P.groupe)shared=JSON.parse(localStorage.getItem(SSTORE))}catch(e){}
 if(!shared||!Array.isArray(shared.blocks))shared={updatedAt:0,blocks:[]};
 let sharedJSON=JSON.stringify(shared.blocks);
 sortBlocks();persistLocal();
@@ -92,72 +106,143 @@ const allBlocks=()=>state.blocks.concat(shared.blocks);
 function sortBlocks(){
   const m=new Map();shared.blocks.concat(state.blocks).forEach(b=>m.set(b.id,b));
   const all=[...m.values()];
-  state.blocks=all.filter(b=>b.cat!=='love');shared.blocks=all.filter(b=>b.cat==='love');
+  const enG=b=>P.groupe&&b.cat==='love';
+  state.blocks=all.filter(b=>!enG(b));shared.blocks=all.filter(enG);
   const j=JSON.stringify(shared.blocks);
   if(j!==sharedJSON){sharedJSON=j;shared.updatedAt=Date.now();shared.dirty=true}
 }
-function persistLocal(){try{localStorage.setItem(P.store,JSON.stringify(state));localStorage.setItem('zephir-ensemble',JSON.stringify(shared))}catch(e){setSync('err')}}
+function persistLocal(){try{localStorage.setItem(P.store,JSON.stringify(state));if(P.groupe)localStorage.setItem(SSTORE,JSON.stringify(shared))}catch(e){setSync('err')}}
 function save(){state.updatedAt=Date.now();sortBlocks();persistLocal();renderAll();schedulePush()}
 
 /* ---------- status dot ---------- */
-function setSync(s){const el=$('#sync');el.className='sync '+s;el.title={ok:'Synchronisé',loading:'Synchronisation…',err:'Synchro impossible pour le moment (réessai automatique)',auth:'Jeton GitHub refusé : reconnecte la synchro',local:'Sauvegarde sur cet appareil uniquement'}[s]||''}
+function setSync(s){const el=$('#sync');el.className='sync '+({nopw:'local',cle:'auth',attente:'ok'}[s]||s);el.title={ok:'Synchronisé',loading:'Synchronisation…',err:'Synchro impossible pour le moment (réessai automatique)',auth:'Jeton GitHub refusé : reconnecte la synchro',local:'Sauvegarde sur cet appareil uniquement',
+  nopw:'Synchro en pause : crée ton mot de passe dans « Mes données »',cle:'Données en ligne chiffrées avec un autre mot de passe : déconnecte-toi puis reconnecte-toi',attente:'Synchronisé (plages ensemble : en attente de la clé partagée)'}[s]||''}
 
-/* ---------- synchro en ligne (Gist GitHub privé) ---------- */
+/* ---------- synchro en ligne (Gist GitHub privé, contenu chiffré) ---------- */
 // shortcut: le dernier appareil qui enregistre gagne (updatedAt) ; 2 appareils modifiés hors ligne en même temps → le plus ancien est écrasé (copie dans 'zephir-avant-synchro'). Passer à une fusion si ça arrive souvent.
 // shortcut: les plages « ensemble » aussi : si vous modifiez tous les deux en même temps, la modif la plus récente gagne. Passer à une fusion plage par plage si ça arrive.
-// Un seul Gist pour les deux : un fichier par profil + 'zephir-ensemble.json'. Un PATCH ne touche que les fichiers envoyés.
-// Avant le renommage, les fichiers s'appelaient 'kairos…' : on les relit tant que les 'zephir…' n'existent pas (jamais effacés).
-const GH='https://api.github.com',GFILE=P.file,SFILE='zephir-ensemble.json',GDESC='ZEPHIR – sauvegarde (ne pas supprimer)',OLD_GDESC='KairOs – sauvegarde (ne pas supprimer)';
-let sync=null;try{sync=JSON.parse(localStorage.getItem('zephir-sync'))}catch(e){}
-let pulled=false,busy=false,pushT=null;
+// Tout le monde partage le même jeton GitHub, donc rien n'est envoyé en clair :
+// - un fichier par profil, chiffré (AES-GCM) avec la clé perso d, connue de son seul propriétaire (dans sa ligne cle, déverrouillée par son mot de passe) ;
+// - un fichier par groupe, chiffré avec la clé k du groupe, recopiée dans le fichier pour chaque membre avec sa clé publique (ECDH P-256).
+// shortcut: le jeton permet quand même d'effacer ou d'abîmer le fichier d'un autre (pas de le lire). Pour l'empêcher, il faudrait un jeton par personne ou un vrai serveur.
+// L'ancien Gist (en clair, avec son historique) n'est plus que lu, pour remplir un appareil neuf. À supprimer à la main quand tout le monde est passé au mot de passe.
+const GH='https://api.github.com',GFILE=P.file,SFILE=P.groupe==='couple'?'zephir-ensemble.json':'zephir-ensemble-'+P.groupe+'.json';
+const GDESC='ZEPHIR – données chiffrées (ne pas supprimer)',OLD_DESC=['ZEPHIR – sauvegarde (ne pas supprimer)','KairOs – sauvegarde (ne pas supprimer)'];
+let sync=null;try{sync=JSON.parse(localStorage.getItem('zephir-sync'))}catch(e){} // {token, g2 = Gist chiffré, gist = ancien Gist}
+let cles=null;try{cles=profil&&JSON.parse(localStorage.getItem('zephir-cles-'+profil))}catch(e){} // {pub, priv, d, k}
+let pulled=false,busy=false,pushT=null,sharedOk=false,sKeys={};
 function saveSync(){try{sync?localStorage.setItem('zephir-sync',JSON.stringify(sync)):localStorage.removeItem('zephir-sync')}catch(e){}}
+function saveCles(){try{cles?localStorage.setItem('zephir-cles-'+profil,JSON.stringify(cles)):localStorage.removeItem('zephir-cles-'+profil)}catch(e){}}
 const gh=(path,opt={})=>fetch(GH+path,{...opt,cache:'no-store',headers:{Authorization:'Bearer '+sync.token,Accept:'application/vnd.github+json'}})
   .then(r=>{if(!r.ok)throw r.status;return r.json()});
-async function findGist(){ // un autre appareil l'a peut-être déjà créé
-  for(let p=1;p<=5;p++){const l=await gh('/gists?per_page=100&page='+p);const g=l.find(x=>x.description===GDESC||x.description===OLD_GDESC||(x.files&&(x.files['zephir.json']||x.files['kairos.json'])));if(g)return g.id;if(l.length<100)break}
+async function findGist(descs,old){ // un autre appareil l'a peut-être déjà créé
+  for(let p=1;p<=5;p++){const l=await gh('/gists?per_page=100&page='+p);const g=l.find(x=>descs.includes(x.description)||(old&&x.description!==GDESC&&x.files&&(x.files['zephir.json']||x.files['kairos.json'])));if(g)return g.id;if(l.length<100)break}
   return null;
 }
-async function readFile(g,name,ok){
-  const f=g.files[name]||g.files[name.replace(/^zephir/,'kairos')];if(!f)return null;
-  const d=JSON.parse(f.truncated?await fetch(f.raw_url,{cache:'no-store'}).then(r=>r.text()):f.content);
-  return ok(d)?d:null;
+async function readFile(g,name,old){
+  const f=g.files[name]||(old&&g.files[name.replace(/^zephir/,'kairos')]);if(!f)return null;
+  return JSON.parse(f.truncated?await fetch(f.raw_url,{cache:'no-store'}).then(r=>r.text()):f.content);
 }
+async function ancien(name){ // ancienne sauvegarde en clair, lue seulement (appareil neuf)
+  try{
+    if(sync.gist===undefined){sync.gist=await findGist(OLD_DESC,true);saveSync()}
+    return sync.gist?await readFile(await gh('/gists/'+sync.gist),name,true):null;
+  }catch(e){return null}
+}
+
+/* chiffrement */
+const TE=new TextEncoder(),TD=new TextDecoder(),AES={name:'AES-GCM',length:256},ECDH={name:'ECDH',namedCurve:'P-256'};
+const b64=u=>{let s='';for(let i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));return btoa(s)};
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const rnd=n=>crypto.getRandomValues(new Uint8Array(n));
+const aesKey=raw=>crypto.subtle.importKey('raw',unb64(raw),'AES-GCM',false,['encrypt','decrypt']);
+async function seal(k,obj){const iv=rnd(12);return {iv:b64(iv),c:b64(new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},k,TE.encode(JSON.stringify(obj)))))}}
+async function openBox(k,box){return JSON.parse(TD.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(box.iv)},k,unb64(box.c))))} // erreur si mauvaise clé
+// clé du groupe recopiée pour un membre : clé jetable + sa clé publique → clé d'emballage
+async function wrapFor(pubB64,kRaw){
+  const eph=await crypto.subtle.generateKey(ECDH,true,['deriveKey']);
+  const pub=await crypto.subtle.importKey('raw',unb64(pubB64),ECDH,false,[]);
+  const w=await crypto.subtle.deriveKey({name:'ECDH',public:pub},eph.privateKey,AES,false,['encrypt']);
+  const iv=rnd(12);
+  return {e:b64(new Uint8Array(await crypto.subtle.exportKey('raw',eph.publicKey))),iv:b64(iv),c:b64(new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},w,kRaw)))};
+}
+async function unwrapMine(box){
+  const priv=await crypto.subtle.importKey('pkcs8',unb64(cles.priv),ECDH,false,['deriveKey']);
+  const epub=await crypto.subtle.importKey('raw',unb64(box.e),ECDH,false,[]);
+  const w=await crypto.subtle.deriveKey({name:'ECDH',public:epub},priv,AES,false,['decrypt']);
+  return b64(new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(box.iv)},w,unb64(box.c))));
+}
+const membres=()=>P.groupe?Object.keys(PROFILS).filter(id=>PROFILS[id].groupe===P.groupe):[];
+const pubOf=id=>id===profil&&cles?cles.pub:(PROFILS[id].cle.includes('.')?PROFILS[id].cle.split('.')[0]:null);
+async function newCles(){
+  const kp=await crypto.subtle.generateKey(ECDH,true,['deriveKey']);
+  return {pub:b64(new Uint8Array(await crypto.subtle.exportKey('raw',kp.publicKey))),priv:b64(new Uint8Array(await crypto.subtle.exportKey('pkcs8',kp.privateKey))),d:b64(rnd(32))};
+}
+
 async function pull(first){
   if(!sync||!profil||busy||(sheetCtx&&!first))return; // pas de remplacement pendant qu'une fiche est ouverte
+  if(!cles){setSync('nopw');return} // pas encore de mot de passe : rien en ligne
   busy=true;setSync('loading');
   try{
-    if(!sync.gist){sync.gist=await findGist();saveSync()}
-    const g=sync.gist?await gh('/gists/'+sync.gist):null;
-    const r=g&&await readFile(g,GFILE,valid),rs=g&&await readFile(g,SFILE,d=>d&&Array.isArray(d.blocks));
+    if(!sync.g2){sync.g2=await findGist([GDESC]);saveSync()}
+    const g=sync.g2?await gh('/gists/'+sync.g2):null;
+    const f=g&&await readFile(g,GFILE);
+    let r=null;
+    if(f){try{r=await openBox(await aesKey(cles.d),f)}catch(e){busy=false;setSync('cle');return}} // chiffré avec une autre clé : on n'écrase rien
+    else if(!state.updatedAt)r=await ancien(GFILE);
+    if(!valid(r))r=null;
     let changed=false;
     if(r&&r.updatedAt>state.updatedAt){ // la version la plus récente gagne, jamais une version vide (updatedAt 0)
       try{localStorage.setItem('zephir-avant-synchro',JSON.stringify(state))}catch(e){}
       state=r;if(!state.ehpad)state.ehpad={};changed=true;
     }
-    if(rs&&rs.updatedAt>shared.updatedAt){shared=rs;sharedJSON=JSON.stringify(rs.blocks);changed=true}
-    else if(!rs&&shared.blocks.length)shared.dirty=true; // fichier partagé pas encore créé
+    sharedOk=!P.groupe;
+    if(P.groupe){
+      const fs=g&&await readFile(g,SFILE);
+      let rs=null;
+      if(fs){
+        sKeys=fs.keys||{};const avaitK=!!cles.k;
+        if(sKeys[profil]){try{const k=await unwrapMine(sKeys[profil]);if(k!==cles.k){cles.k=k;saveCles()}}catch(e){}}
+        if(cles.k){try{rs=await openBox(await aesKey(cles.k),fs)}catch(e){}}
+        sharedOk=!!rs; // sinon : on attend qu'un autre membre nous ajoute, sans rien envoyer
+        if(rs&&membres().some(id=>pubOf(id)&&!sKeys[id]))shared.dirty=true; // un membre à ajouter
+        // clé reçue pour la première fois : on réunit les plages d'ici et celles en ligne, sans rien perdre
+        if(rs&&!avaitK&&Array.isArray(rs.blocks)){const m=new Map(rs.blocks.map(x=>[x.id,x]));shared.blocks.forEach(x=>m.set(x.id,x));
+          rs={updatedAt:Date.now(),blocks:[...m.values()]};if(shared.blocks.length)shared.dirty=true}
+      }else{
+        sKeys={};if(!shared.updatedAt)rs=await ancien(SFILE);
+        if(!cles.k){cles.k=b64(rnd(32));saveCles()}
+        sharedOk=true;if(shared.blocks.length||rs)shared.dirty=true;
+      }
+      if(rs&&Array.isArray(rs.blocks)&&rs.updatedAt>shared.updatedAt){shared={updatedAt:rs.updatedAt,blocks:rs.blocks,dirty:shared.dirty};sharedJSON=JSON.stringify(rs.blocks);changed=true}
+    }
     if(changed){sortBlocks();persistLocal();renderAll()}
     pulled=true;busy=false;
-    if(!r||state.updatedAt>r.updatedAt||shared.dirty)return push();
-    setSync('ok');
+    if(!f||!r||state.updatedAt>r.updatedAt||(sharedOk&&shared.dirty))return push();
+    setSync(sharedOk?'ok':'attente');
   }catch(e){busy=false;setSync(e===401?'auth':'err')}
 }
 async function push(){
-  if(!sync||!pulled)return; // jamais d'envoi avant d'avoir lu la version en ligne
+  if(!sync||!pulled||!cles)return; // jamais d'envoi avant d'avoir lu la version en ligne
   if(busy)return schedulePush();
   busy=true;setSync('loading');
-  const body={description:GDESC,files:{[GFILE]:{content:JSON.stringify(state)}}};
-  // le fichier partagé n'est envoyé que s'il a changé ici, pour ne pas écraser une modif de l'autre
-  const sentAt=shared.dirty&&shared.updatedAt;
-  if(sentAt)body.files[SFILE]={content:JSON.stringify({updatedAt:shared.updatedAt,blocks:shared.blocks})};
   try{
-    if(sync.gist)await gh('/gists/'+sync.gist,{method:'PATCH',body:JSON.stringify(body)});
-    else{sync.gist=(await gh('/gists',{method:'POST',body:JSON.stringify({...body,public:false})})).id;saveSync()}
-    if(sentAt&&shared.updatedAt===sentAt){shared.dirty=false;persistLocal()}
-    busy=false;setSync('ok');
+    const body={description:GDESC,files:{[GFILE]:{content:JSON.stringify({v:2,...await seal(await aesKey(cles.d),state)})}}};
+    // le fichier du groupe n'est envoyé que s'il a changé ici, pour ne pas écraser une modif d'un autre
+    const envoi=P.groupe&&sharedOk&&shared.dirty&&cles.k,sentAt=shared.updatedAt;
+    if(envoi){
+      const kRaw=unb64(cles.k),keys={...sKeys};
+      for(const id of membres()){const pk=pubOf(id);if(pk)keys[id]=await wrapFor(pk,kRaw)}
+      sKeys=keys;
+      body.files[SFILE]={content:JSON.stringify({v:2,keys,...await seal(await aesKey(cles.k),{updatedAt:shared.updatedAt,blocks:shared.blocks})})};
+    }
+    if(sync.g2)await gh('/gists/'+sync.g2,{method:'PATCH',body:JSON.stringify(body)});
+    else{sync.g2=(await gh('/gists',{method:'POST',body:JSON.stringify({...body,public:false})})).id;saveSync()}
+    if(envoi&&shared.updatedAt===sentAt){shared.dirty=false;persistLocal()}
+    busy=false;setSync(sharedOk?'ok':'attente');
   }catch(e){
     busy=false;
-    if(e===404){sync.gist=null;saveSync();return push()} // gist supprimé : on en recrée un
+    if(e===404){sync.g2=null;saveSync();return push()} // gist supprimé : on en recrée un
     setSync(e===401?'auth':'err');
   }
 }
@@ -170,30 +255,34 @@ async function checkToken(token){
 }
 async function connect(token){
   if(!await checkToken(token))return;
-  pulled=false;await pull(true);closeSheet();toast('Synchro activée ✓');
+  pulled=false;await pull(true);closeSheet();toast(cles?'Synchro activée ✓':'Jeton enregistré : crée ton mot de passe pour lancer la synchro');
 }
-/* mot de passe : le jeton chiffré en AES-GCM, clé tirée du mot de passe (PBKDF2). Format de cle : base64(sel 16 | iv 12 | chiffré) */
-const b64=u=>btoa(String.fromCharCode(...u)),unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+/* ligne cle : clé publique . base64(sel 16 | iv 12 | chiffré) ; le chiffré = {t: jeton, x: clé privée, d: clé perso}, clé tirée du mot de passe (PBKDF2) */
 async function keyFrom(pw,salt){
-  const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
-  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:600000,hash:'SHA-256'},k,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  const k=await crypto.subtle.importKey('raw',TE.encode(pw),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:600000,hash:'SHA-256'},k,AES,false,['encrypt','decrypt']);
 }
-async function lock(token,pw){
-  const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));
-  const c=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await keyFrom(pw,salt),new TextEncoder().encode(token)));
+async function lock(obj,pw){
+  const salt=rnd(16),iv=rnd(12);
+  const c=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await keyFrom(pw,salt),TE.encode(JSON.stringify(obj))));
   return b64(new Uint8Array([...salt,...iv,...c]));
 }
 async function unlock(cle,pw){ // null si mauvais mot de passe
-  try{const d=unb64(cle);return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:d.slice(16,28)},await keyFrom(pw,d.slice(0,16)),d.slice(28)))}catch(e){return null}
+  try{const d=unb64(cle.split('.').pop());return JSON.parse(TD.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:d.slice(16,28)},await keyFrom(pw,d.slice(0,16)),d.slice(28))))}catch(e){return null}
 }
 async function login(nom,pw){
   const simple=s=>s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); // « lailou » = « Laïlou »
   const p=Object.keys(PROFILS).find(id=>simple(PROFILS[id].nom)===simple(nom));
   if(!p){$('#syncErr').textContent='Prénom inconnu.';return}
-  let token=pw;
-  if(pw&&PROFILS[p].cle){$('#syncErr').textContent='';token=await unlock(PROFILS[p].cle,pw);if(!token){$('#syncErr').textContent='Mot de passe incorrect.';return}}
-  if(token&&!await checkToken(token))return;
-  try{localStorage.setItem('zephir-profil',p)}catch(e){}
+  if(!pw){$('#syncErr').textContent='Mot de passe manquant.';return}
+  const c=PROFILS[p].cle;let token=pw,u=null;
+  if(c){$('#syncErr').textContent='Vérification…';u=await unlock(c,pw);if(!u){$('#syncErr').textContent='Mot de passe incorrect.';return}token=u.t}
+  if(!await checkToken(token))return;
+  try{
+    localStorage.setItem('zephir-profil',p);
+    if(u){let old=null;try{old=JSON.parse(localStorage.getItem('zephir-cles-'+p))}catch(e){}
+      localStorage.setItem('zephir-cles-'+p,JSON.stringify({pub:c.split('.')[0],priv:u.x,d:u.d,k:old&&old.d===u.d?old.k:undefined}))}
+  }catch(e){}
   location.reload(); // tout repart avec les catégories et les données du profil choisi
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull()});
@@ -240,7 +329,8 @@ function openData(){
     :`<p class="meta">Colle ton jeton GitHub (droit « Gists » seulement), le même sur chaque appareil. La version la plus récente (en ligne ou sur cet appareil) est gardée, l'autre est mise de côté.</p>
     <form class="addrow" data-form="syncOn"><input name="t" type="password" placeholder="github_pat_…" autocomplete="off"><button>Connecter</button></form>`}
     <div class="err" id="syncErr"></div>
-    ${sync?`<h2 style="margin-top:22px">Mot de passe</h2><p class="meta">Choisis ton mot de passe pour te connecter (10 caractères minimum). La ligne obtenue est à mettre dans l'appli à côté de ton prénom.</p>
+    ${sync&&P.cle&&!cles?`<h2 style="margin-top:22px">Mot de passe</h2><p class="meta">Ton mot de passe existe déjà : déconnecte-toi puis reconnecte-toi avec lui pour reprendre la synchro.</p>`
+    :sync?`<h2 style="margin-top:22px">Mot de passe</h2><p class="meta">${cles?'':'<b>Synchro en pause tant que tu n\'as pas de mot de passe.</b> '}Choisis ton mot de passe (10 caractères minimum) : tes données en ligne seront chiffrées avec, personne d'autre ne pourra les lire. Envoie la ligne obtenue à Laïlou pour qu'elle soit mise dans l'appli. Garde ton mot de passe : sans lui, la copie en ligne est perdue.</p>
     <form class="addrow" data-form="mkPw"><input name="a" type="password" placeholder="Mot de passe" minlength="10" autocomplete="new-password" required><input name="b" type="password" placeholder="Encore une fois" autocomplete="new-password" required><button>Créer</button></form>
     <div class="err" id="pwErr"></div><input class="inp" id="pwOut" readonly hidden style="margin-top:10px">`:''}
     <div class="sh-foot"><button class="btn ghost" data-act="logout">Changer de profil (${esc(P.nom)})</button></div>
@@ -252,7 +342,9 @@ let curMon=mondayOf(new Date());
 let tab='plan';
 // poste du jour : un code de SHIFTS, ou des heures du jour 'HH:MM-HH:MM' ; dimanche = Repos si rien n'est mis (profil dimRepos)
 // ordre : choix fait dans l'appli ('' = « Pas encore connu » choisi exprès) > planning papier (P.PLANNING) > dimanche Repos
-const codeOf=k=>k in state.shifts?state.shifts[k]:(P.PLANNING&&P.PLANNING[k])||(P.dimRepos&&parse(k).getDay()===0?'Repos':'');
+// P.SEMAINE = poste habituel par jour de la semaine (0 = dimanche), après le planning papier
+const defOf=k=>(P.PLANNING&&P.PLANNING[k])||(P.SEMAINE&&P.SEMAINE[parse(k).getDay()])||(P.dimRepos&&parse(k).getDay()===0?'Repos':'');
+const codeOf=k=>k in state.shifts?state.shifts[k]:defOf(k);
 const isHours=c=>/^\d\d:\d\d-\d\d:\d\d$/.test(c||'');
 const shOf=c=>SHIFTS[c]||(isHours(c)?{name:'Heures du jour',segs:[c.split('-')]}:null);
 const codeLbl=c=>isHours(c)?hfmt(t2m(c.slice(0,5)))+'-'+hfmt(endMin(c.slice(6))):c;
@@ -507,11 +599,12 @@ document.addEventListener('click',e=>{
     case 'syncNow':closeSheet();pull();break;
     case 'restore':{const b=backupOf();if(!b)break;state=b;if(!state.ehpad)state.ehpad={};save();closeSheet();toast('Version précédente remise ✓');break}
     case 'syncOff':sync=null;saveSync();pulled=false;setSync('local');openData();break;
-    case 'logout':try{localStorage.removeItem('zephir-profil')}catch(e){}location.reload();break;
+    // les clés ne sont effacées que si le mot de passe peut les rendre (ligne cle dans l'appli)
+    case 'logout':try{localStorage.removeItem('zephir-profil');if(P.cle)localStorage.removeItem('zephir-cles-'+profil)}catch(e){}location.reload();break;
     case 'fab':if(tab==='urg')openUrgAdd();else openEditor(defaultSlot());break;
     case 'open':openDetails(a.dataset.type,a.dataset.k,a.dataset.id);break;
     case 'shift':openShift(a.dataset.k);break;
-    case 'setShift':{const k=a.dataset.k,code=a.dataset.code;if(code)state.shifts[k]=code;else if(P.PLANNING&&P.PLANNING[k])state.shifts[k]='';else delete state.shifts[k];save();closeSheet();break}
+    case 'setShift':{const k=a.dataset.k,code=a.dataset.code;if(code)state.shifts[k]=code;else if(defOf(k))state.shifts[k]='';else delete state.shifts[k];save();closeSheet();break}
     case 'toggleImp':{if(!c)break;const r=refOf(c.type,c.k,c.id,true);if(!r)break;r.imp=!r.imp;save();openDetails(c.type,c.k,c.id);break}
     case 'ckTask':{if(!c)break;const r=refOf(c.type,c.k,c.id,true);const t=r&&(r.tasks||[]).find(x=>x.id===a.dataset.tid);if(t){t.done=!t.done;save();openDetails(c.type,c.k,c.id)}break}
     case 'delTask':{if(!c)break;const r=refOf(c.type,c.k,c.id,true);if(r){r.tasks=(r.tasks||[]).filter(x=>x.id!==a.dataset.tid);save();openDetails(c.type,c.k,c.id)}break}
@@ -559,8 +652,16 @@ document.addEventListener('submit',e=>{
     case 'mkPw':{
       if(f.a.value!==f.b.value){$('#pwErr').textContent='Les deux mots de passe ne sont pas pareils.';return}
       $('#pwErr').textContent='';
-      lock(sync.token,f.a.value).then(cle=>{const o=$('#pwOut');o.value=cle;o.hidden=false;o.select();
-        navigator.clipboard&&navigator.clipboard.writeText(cle).then(()=>toast('Ligne copiée ✓'),()=>{})});
+      if(P.cle&&!cles)return; // ne pas fabriquer d'autres clés : celles de la ligne existante seraient perdues
+      (async()=>{
+        $('#pwErr').textContent='Chiffrement…';
+        const neuf=!cles;if(neuf){cles=await newCles();saveCles()} // clés gardées si on change juste de mot de passe
+        const cle=cles.pub+'.'+await lock({t:sync.token,x:cles.priv,d:cles.d},f.a.value);
+        $('#pwErr').textContent='';
+        const o=$('#pwOut');o.value=cle;o.hidden=false;o.select();
+        navigator.clipboard&&navigator.clipboard.writeText(cle).then(()=>toast('Ligne copiée ✓'),()=>{});
+        if(neuf){pulled=false;pull(true)}
+      })();
       break;
     }
     case 'setHours':{
@@ -601,7 +702,7 @@ setInterval(()=>{if(!sheetCtx){renderPlan();renderNow()}},60000);
 setSync('local');
 // page de connexion sous l'écran de lancement : visible quand il s'efface, retirée si déjà connecté (et son #syncErr avec)
 if(profil){$('#login').remove();pull()}
-else{$('#login .logo').innerHTML=$('#splash .logo').innerHTML;if(sync)$('#login [name=t]').remove()}
+else $('#login .logo').innerHTML=$('#splash .logo').innerHTML; // mot de passe toujours demandé, même si l'appareil connaît déjà le jeton
 })();
 
 /* ---------- mode hors connexion (PWA) ---------- */
