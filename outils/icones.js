@@ -2,7 +2,8 @@
 // Lancer depuis C:\KairOs :  node outils/icones.js
 const fs = require('fs'), zlib = require('zlib'), path = require('path');
 
-const BG = [7, 10, 16], BLUE = [30, 159, 217], GREEN = [52, 232, 158], PINK = [242, 122, 166], WHITE = [238, 242, 246];
+// couleurs alignées sur style.css (--bg, --ehpad, --bf, --love, --txt)
+const BG = [11, 13, 18], BLUE = [124, 156, 255], GREEN = [95, 212, 174], PINK = [240, 160, 192], WHITE = [236, 238, 242];
 
 function draw(size, pad) { // pad : marge de sécurité (icônes "maskable" rognées en rond)
   const px = Buffer.alloc(size * size * 4), c = size / 2, R = size * (0.5 - pad);

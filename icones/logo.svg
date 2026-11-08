@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 160" role="img" aria-label="KairOs">
+  <!-- Logo KairOs : le « O » est l'anneau 3 couleurs (EHPAD, BF, amour) avec ses aiguilles. Pour fond sombre. -->
+  <g font-family="Geist, Inter, system-ui, sans-serif" font-weight="600" font-size="120" fill="#ECEEF2">
+    <text x="10" y="122" textLength="212" lengthAdjust="spacingAndGlyphs">Kair</text>
+    <text x="326" y="122" textLength="62" lengthAdjust="spacingAndGlyphs">s</text>
+  </g>
+  <g transform="translate(274 78)" fill="none" stroke-width="13">
+    <g transform="rotate(-90)">
+      <circle r="40" pathLength="300" stroke="#7C9CFF" stroke-dasharray="94 206" stroke-dashoffset="-3"/>
+      <circle r="40" pathLength="300" stroke="#5FD4AE" stroke-dasharray="94 206" stroke-dashoffset="-103"/>
+      <circle r="40" pathLength="300" stroke="#F0A0C0" stroke-dasharray="94 206" stroke-dashoffset="-203"/>
+    </g>
+    <path d="M0 0V-23M0 0L13.5 -7.8" stroke="#ECEEF2" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>
