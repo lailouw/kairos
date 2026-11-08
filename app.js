@@ -7,7 +7,7 @@ const MONTHS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.
 // 'love' = temps ensemble : ces plages vont dans le fichier partagé du Gist.
 const PROFILS={
   // cle = le jeton GitHub chiffré avec le mot de passe (« Mes données » → Créer mon mot de passe). Vide : le mot de passe est le jeton lui-même.
-  moi:{nom:'Lallou',cle:'',store:'zephir-state',file:'zephir.json',
+  moi:{nom:'Laïlou',cle:'',store:'zephir-state',file:'zephir.json',
     SHIFTS:{
       M70:{name:'Matin',segs:[['06:30','14:30']]},
       C96:{name:'Coupé',segs:[['07:30','12:30'],['17:30','20:00']]},
@@ -181,7 +181,8 @@ async function unlock(cle,pw){ // null si mauvais mot de passe
   try{const d=unb64(cle);return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:d.slice(16,28)},await keyFrom(pw,d.slice(0,16)),d.slice(28)))}catch(e){return null}
 }
 async function login(nom,pw){
-  const p=Object.keys(PROFILS).find(id=>PROFILS[id].nom.toLowerCase()===nom.trim().toLowerCase());
+  const simple=s=>s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); // « lailou » = « Laïlou »
+  const p=Object.keys(PROFILS).find(id=>simple(PROFILS[id].nom)===simple(nom));
   if(!p){$('#syncErr').textContent='Prénom inconnu.';return}
   let token=pw;
   if(pw&&PROFILS[p].cle){$('#syncErr').textContent='';token=await unlock(PROFILS[p].cle,pw);if(!token){$('#syncErr').textContent='Mot de passe incorrect.';return}}
