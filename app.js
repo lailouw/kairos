@@ -104,6 +104,7 @@ const sjson={};for(const g in parts)sjson[g]=JSON.stringify(parts[g].blocks);
 sortBlocks();persistLocal();
 
 const allBlocks=()=>state.blocks.concat(...Object.values(parts).map(p=>p.blocks));
+const avecNoms=b=>(b.qui||[]).filter(id=>id!==ME&&PROFILS[id]).map(id=>PROFILS[id].nom).join(' et '); // les autres profils d'une plage partagée
 const catOf=c=>CATS[c]?c:'other'; // catégorie qu'un autre profil n'a pas (BroFliping chez Clara) : affichée en « Autres »
 // range chaque plage au bon endroit (aussi les anciennes plages 'love' sans qui : partagées avec le groupe, comme avant)
 function sortBlocks(){
@@ -417,7 +418,7 @@ function itemsForDay(k){
   const code=codeOf(k),sh=shOf(code);
   const ex=state.ehpad[k]||{};
   if(sh&&sh.segs)sh.segs.forEach(s=>out.push({type:'ehpad',cat:'ehpad',date:k,s:t2m(s[0]),e:endMin(s[1]),title:CATS.ehpad.name,code,imp:!!ex.imp,tasks:ex.tasks||[]}));
-  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:catOf(b.cat),id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.cat==='broflip'?'BroFliping':(b.title||CATS[catOf(b.cat)].name),imp:!!b.imp,tasks:b.tasks||[]}));
+  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:catOf(b.cat),id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.cat==='broflip'?'BroFliping':(b.title||CATS[catOf(b.cat)].name),imp:!!b.imp,avec:avecNoms(b),tasks:b.tasks||[]}));
   return out.sort((a,b)=>a.s-b.s||b.e-a.e);
 }
 function layout(items){
@@ -436,7 +437,7 @@ function blockHTML(it){
   const top=(s-START*60)/60,h=(e-s)/60,w=100/it.n,left=it.lane*w;
   const done=it.tasks.filter(t=>t.done).length;
   const prog=it.tasks.length&&h>=1.5?`<span class="prog">✓ ${done}/${it.tasks.length}</span>`:'';
-  return `<div class="blk c-${it.cat}${it.imp?' has-imp':''}${h<1?' short':''}" style="top:calc(${top} * var(--h) + 1px);height:calc(${h} * var(--h) - 2px);left:calc(${left}% + 2px);width:calc(${w}% - 4px)" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}">${it.imp?'<span class="imp" title="Important"></span>':''}<span class="bt">${esc(it.title)}</span><span class="bh">${hfmt(it.s)}–${hfmt(it.e)}</span>${prog}</div>`;
+  return `<div class="blk c-${it.cat}${it.imp?' has-imp':''}${h<1?' short':''}" style="top:calc(${top} * var(--h) + 1px);height:calc(${h} * var(--h) - 2px);left:calc(${left}% + 2px);width:calc(${w}% - 4px)" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}">${it.imp?'<span class="imp" title="Important"></span>':''}<span class="bt">${esc(it.title)}</span>${it.avec?`<span class="ba">avec ${esc(it.avec)}</span>`:''}<span class="bh">${hfmt(it.s)}–${hfmt(it.e)}</span>${prog}</div>`;
 }
 function weekDays(){return [...Array(7)].map((_,i)=>addDays(curMon,i))}
 function renderPlan(){
@@ -563,7 +564,7 @@ function openDetails(type,k,id,focus){
     cat='ehpad';title=`${CATS.ehpad.name} · ${codeLbl(c)} (${sh.name})`;
     time=sh.segs.map(s=>hfmt(t2m(s[0]))+' – '+hfmt(endMin(s[1]))).join(' et ');
   }else{cat=catOf(ref.cat);title=ref.title||CATS[cat].name;time=hfmt(t2m(ref.start))+' – '+hfmt(endMin(ref.end));
-    const avec=(ref.qui||[]).filter(id=>id!==ME&&PROFILS[id]).map(id=>PROFILS[id].nom);if(avec.length)time+=' · avec '+avec.join(' et ')}
+    const avec=avecNoms(ref);if(avec)time+=' · avec '+avec}
   const tasks=ref.tasks||[],done=tasks.filter(t=>t.done).length;
   const html=`<div class="sh-head"><span class="tag t-${cat}">${CATS[cat].name}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <h2>${esc(title)}</h2><p class="meta">${dayLabel(k)} · ${time}</p>
