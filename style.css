@@ -298,3 +298,10 @@ select.inp option{background:#151821}
 .rg-sem{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;margin-top:10px}
 .rg-j{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mut)}
 .rg-j .inp{padding:8px}
+/* listes */
+.lnew{width:24px;height:24px;border-radius:8px;background:var(--glass2);color:var(--txt);font-size:16px;line-height:1}
+/* réactions sur une plage partagée */
+.reacs{display:flex;gap:6px;margin:12px 0 6px}
+.rc{font-size:20px;padding:6px 10px;border-radius:12px;background:var(--glass2);border:1.5px solid transparent}
+.rc.on{border-color:var(--txt)}
+.br{position:absolute;right:3px;bottom:2px;font-size:10px;line-height:1}

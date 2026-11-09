@@ -128,6 +128,18 @@ if(!parts||typeof parts!=='object'){parts={};try{const o=P.groupe==='couple'&&JS
 const sjson={};for(const g in parts)sjson[g]=JSON.stringify(parts[g].blocks);
 sortBlocks();persistLocal();
 
+// listes (courses…) : rien que pour moi dans state.listes, partagées dans parts[gid].lists ; chaque élément porte at (dernière modif)
+// éléments réunis par id : le plus récent (at) gagne ; un élément effacé reste en {id,del,at} pour que l'effacement passe aussi chez les autres
+// shortcut: les éléments effacés ne sont jamais vidés du fichier. Les purger (ex : après 30 jours) si le fichier grossit trop.
+const okIt=x=>x&&typeof x==='object'&&typeof x.id==='string';
+function fusion(a,b,mix){const m=new Map((Array.isArray(a)?a:[]).filter(okIt).map(x=>[x.id,x]));
+  for(const x of (Array.isArray(b)?b:[]).filter(okIt)){const y=m.get(x.id);m.set(x.id,!y?x:mix?mix(y,x):((x.at||0)>(y.at||0)?x:y))}return [...m.values()]}
+const fusListes=(a,b)=>fusion(a,b,(x,y)=>({...((y.at||0)>(x.at||0)?y:x),items:fusion(x.items,y.items)}));
+// réactions (b.reac = {profil: emoji}) : chacun ne change que la sienne, donc la mienne vient d'ici et celles des autres d'en ligne
+const REACS=['❤️','👍','😂','😮','🙏'];
+const avecReacs=(blocks,ici,enLigne)=>blocks.map(b=>{const l=ici.find(x=>x.id===b.id),r=enLigne.find(x=>x.id===b.id);
+  const reac={...(r&&r.reac)};delete reac[ME];if(l&&l.reac&&l.reac[ME])reac[ME]=l.reac[ME];
+  const {reac:_,...x}=b;return Object.keys(reac).length?{...x,reac}:x});
 const allBlocks=()=>state.blocks.concat(...Object.values(parts).map(p=>p.blocks));
 const avecNoms=b=>(b.qui||[]).filter(id=>id!==ME&&PROFILS[id]).map(id=>PROFILS[id].nom).join(' et '); // les autres profils d'une plage partagée
 const catOf=c=>Object.hasOwn(CATS,c)?c:'other'; // catégorie qu'un autre profil n'a pas (BroFliping chez Clara) : affichée en « Autres »
@@ -267,13 +279,19 @@ async function pull(first){
         if(rs&&gid.split('_').some(id=>pubOf(id)&&(!keys[id]||keys[id].p!==pubOf(id))))p.dirty=true; // un membre à ajouter, ou sa clé recopiée pour une ancienne clé publique (p = pour quelle clé)
         // clé reçue (ou changée) : on réunit les plages d'ici et celles en ligne, sans rien perdre
         if(rs&&cles.ks[gid]!==k0&&Array.isArray(rs.blocks)){const m=new Map(rs.blocks.map(x=>[x.id,x]));p.blocks.forEach(x=>m.set(x.id,x));
-          rs={updatedAt:Date.now(),blocks:[...m.values()],subs:rs.subs};if(p.blocks.length)p.dirty=true}
+          rs={updatedAt:Date.now(),blocks:[...m.values()],subs:rs.subs,lists:fusListes(rs.lists,p.lists)};if(p.blocks.length||(p.lists||[]).length)p.dirty=true}
       }else{
         gKeys[gid]={};if(!p.updatedAt)rs=await ancien(name);
         if(!cles.ks[gid])cles.ks[gid]=b64(rnd(32));
-        gOk[gid]=true;if(p.blocks.length||rs)p.dirty=true;
+        gOk[gid]=true;if(p.blocks.length||(p.lists||[]).length||rs)p.dirty=true;
       }
-      if(rs&&Array.isArray(rs.blocks)&&rs.updatedAt>p.updatedAt){parts[gid]={updatedAt:rs.updatedAt,blocks:rs.blocks,subs:rs.subs,dirty:p.dirty};sjson[gid]=JSON.stringify(rs.blocks);changed=true}
+      if(rs&&Array.isArray(rs.blocks)){
+        if(!p.dirty){if(rs.updatedAt>p.updatedAt){parts[gid]={updatedAt:rs.updatedAt,blocks:rs.blocks,subs:rs.subs,lists:Array.isArray(rs.lists)?rs.lists:[]};sjson[gid]=JSON.stringify(rs.blocks);changed=true}}
+        else{ // modifs d'ici pas encore envoyées : réunies avec celles en ligne (listes élément par élément, réactions par personne) au lieu d'écraser l'une ou l'autre
+          const plusRecent=rs.updatedAt>p.updatedAt,blocks=avecReacs(plusRecent?rs.blocks:p.blocks,p.blocks,rs.blocks);
+          parts[gid]={updatedAt:Date.now(),blocks,subs:plusRecent?rs.subs:p.subs,lists:fusListes(p.lists,rs.lists),dirty:true};sjson[gid]=JSON.stringify(blocks);changed=true;
+        }
+      }
       // mon abonnement aux notifications doit être dans le fichier du groupe (il a pu être écrasé par la version d'un autre)
       const q=parts[gid];if(gOk[gid]&&monAbo&&JSON.stringify((q.subs||{})[ME])!==monAbo){q.subs={...q.subs,[ME]:JSON.parse(monAbo)};q.updatedAt=Date.now();q.dirty=true;changed=true}
     }
@@ -300,7 +318,7 @@ async function push(){
       const kRaw=unb64(k),keys={...gKeys[gid]};
       for(const id of gid.split('_')){const pk=pubOf(id);if(pk)keys[id]=await wrapFor(pk,kRaw)}
       gKeys[gid]=keys;
-      body.files[fileOf(gid)]={content:JSON.stringify({v:2,keys,...await seal(await aesKey(k),{updatedAt:p.updatedAt,blocks:p.blocks,subs:p.subs})})};
+      body.files[fileOf(gid)]={content:JSON.stringify({v:2,keys,...await seal(await aesKey(k),{updatedAt:p.updatedAt,blocks:p.blocks,subs:p.subs,lists:p.lists||[]})})};
       envois.push([gid,p.updatedAt]);
     }
     if(sync.g2)await gh('/gists/'+sync.g2,{method:'PATCH',body:JSON.stringify(body)});
@@ -383,7 +401,7 @@ const PUSH_URL='https://zephir-push.lallou-w9.workers.dev',VAPID_PUB='BA8OvB8_K_
 const VSTORE='zephir-vus-'+ME;
 let vus=null;try{vus=JSON.parse(localStorage.getItem(VSTORE))}catch(e){}
 let monAbo=null;try{monAbo=localStorage.getItem('zephir-abo')}catch(e){}
-let aNotifier=[]; // plages partagées créées ici, à annoncer une fois envoyées en ligne
+let aNotifier=[],aReac=[]; // plages partagées créées ici / réactions mises ici, à annoncer une fois envoyées en ligne
 function texteNotif(b){
   const quand=parse(b.date).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   return `${PROFILS[b.par].nom} a créé un évènement partagé : ${b.title||CATS[catOf(b.cat)].name}, ${quand} à ${b.start}`;
@@ -398,6 +416,12 @@ function notifierNouveaux(){
 }
 function envoyerNotifs(){
   if(!PUSH_URL)return;
+  for(const {id,e} of aReac.splice(0)){
+    const b=allBlocks().find(x=>x.id===id);if(!b||!b.qui||!b.reac||b.reac[ME]!==e)continue; // réaction retirée entre-temps
+    const subs=(parts[b.qui.join('_')]||{}).subs||{};
+    b.qui.filter(q=>q!==ME&&subs[q]).forEach(q=>fetch(PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sub:subs[q],data:{title:'ZEPHIR',body:`${PROFILS[ME].nom} a réagi ${e} à « ${b.title||CATS[catOf(b.cat)].name} »`,tag:'r'+id+ME}})}).catch(()=>{}));
+  }
   for(const id of aNotifier.splice(0)){
     const b=allBlocks().find(x=>x.id===id);if(!b||!b.qui)continue;
     const subs=(parts[b.qui.join('_')]||{}).subs||{};
@@ -595,7 +619,7 @@ function itemsForDay(k){
   const code=codeOf(k),sh=shOf(code);
   const ex=state.ehpad[k]||{};
   if(sh&&sh.segs)sh.segs.forEach(s=>out.push({type:'ehpad',cat:'ehpad',date:k,s:t2m(s[0]),e:endMin(s[1]),title:CATS.ehpad.name,code,imp:!!ex.imp,tasks:ex.tasks||[]}));
-  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:catOf(b.cat),id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.cat==='broflip'&&Object.hasOwn(CATS,'broflip')?CATS.broflip.name:(b.title||CATS[catOf(b.cat)].name),imp:!!b.imp,avec:avecNoms(b),tasks:b.tasks||[]}));
+  allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:catOf(b.cat),id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.cat==='broflip'&&Object.hasOwn(CATS,'broflip')?CATS.broflip.name:(b.title||CATS[catOf(b.cat)].name),imp:!!b.imp,avec:avecNoms(b),reac:Object.values(b.reac||{}).filter(v=>REACS.includes(v)).join(''),tasks:b.tasks||[]}));
   return out.sort((a,b)=>a.s-b.s||b.e-a.e);
 }
 function layout(items){
@@ -614,7 +638,7 @@ function blockHTML(it){
   const top=(s-START*60)/60,h=(e-s)/60,w=100/it.n,left=it.lane*w;
   const done=it.tasks.filter(t=>t.done).length;
   const prog=it.tasks.length&&h>=1.5?`<span class="prog">✓ ${done}/${it.tasks.length}</span>`:'';
-  return `<div class="blk c-${it.cat}${it.imp?' has-imp':''}${h<1?' short':''}" style="--c:${CATS[it.cat].color};top:calc(${top} * var(--h) + 1px);height:calc(${h} * var(--h) - 2px);left:calc(${left}% + 2px);width:calc(${w}% - 4px)" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}">${it.imp?'<span class="imp" title="Important"></span>':''}<span class="bt">${esc(it.title)}</span>${it.avec?`<span class="ba">avec ${esc(it.avec)}</span>`:''}<span class="bh">${hfmt(it.s)}–${hfmt(it.e)}</span>${prog}</div>`;
+  return `<div class="blk c-${it.cat}${it.imp?' has-imp':''}${h<1?' short':''}" style="--c:${CATS[it.cat].color};top:calc(${top} * var(--h) + 1px);height:calc(${h} * var(--h) - 2px);left:calc(${left}% + 2px);width:calc(${w}% - 4px)" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}">${it.imp?'<span class="imp" title="Important"></span>':''}<span class="bt">${esc(it.title)}</span>${it.avec?`<span class="ba">avec ${esc(it.avec)}</span>`:''}<span class="bh">${hfmt(it.s)}–${hfmt(it.e)}</span>${prog}${it.reac?`<span class="br">${it.reac}</span>`:''}</div>`;
 }
 function weekDays(){return [...Array(7)].map((_,i)=>addDays(curMon,i))}
 function renderPlan(){
@@ -690,7 +714,49 @@ function renderUrg(){
   if(keep){const i=p.querySelector('input[name=t]');i.value=draft;i.focus()}
 }
 
-function renderAll(){renderPlan();renderNow();renderUrg();planRappels()}
+/* ---------- listes (courses…) ---------- */
+const mesListes=()=>[...(state.listes||[]),...Object.values(parts).flatMap(p=>p.lists||[])].filter(l=>okIt(l)&&!l.del&&Array.isArray(l.items));
+function listeRef(id){ // {l, p} : p = fichier du groupe (null pour une liste rien qu'à moi)
+  for(const l of state.listes||[])if(l.id===id&&!l.del)return {l,p:null};
+  for(const p of Object.values(parts))for(const l of p.lists||[])if(okIt(l)&&l.id===id&&!l.del&&Array.isArray(l.items))return {l,p};
+}
+function marque({p}){if(p){p.updatedAt=Date.now();p.dirty=true}save()} // une liste partagée a changé : son fichier de groupe est à renvoyer
+const restants=l=>l.items.filter(x=>okIt(x)&&!x.del&&!x.done).length;
+const avecL=l=>(Array.isArray(l.qui)?l.qui:[]).filter(id=>id!==ME&&PROFILS[id]).map(id=>PROFILS[id].nom).join(' et ');
+function listesHTML(){
+  const ls=mesListes();
+  return ls.length?ls.map(l=>`<button class="nrow" data-act="liste" data-id="${esc(l.id)}"><i style="background:var(--bf)"></i><div><small>${avecL(l)?'avec '+esc(avecL(l)):'Rien que pour toi'}</small><b>${esc(l.nom)}</b></div><span>${restants(l)||'✓'}</span></button>`).join('')
+    :'<div class="nrow free">Pas encore de liste (courses, cadeaux…)</div>';
+}
+function renderListes(){$('#pListes').innerHTML=`<h3><span>Listes</span><button class="lnew" data-act="newListe" aria-label="Nouvelle liste">+</button></h3><div class="nowc">${listesHTML()}</div>`}
+function openListes(){
+  openSheet(`<div class="sh-head"><span class="tag t-ehpad">Listes</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
+    <div class="nowc" style="margin-top:12px">${listesHTML()}</div>
+    <div class="sh-foot"><button class="btn" data-act="newListe">+ Nouvelle liste</button></div>`,{kind:'listes'});
+}
+function openNewListe(){
+  openSheet(`<div class="sh-head"><span class="tag t-ehpad">Nouvelle liste</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
+    <form data-form="newListe">
+      <div class="field"><span class="lbl">Nom</span><input class="inp" name="nom" placeholder="Ex : Courses" maxlength="40" autocomplete="off" required></div>
+      ${autres().length?`<div class="field"><span class="lbl">Partagée avec</span><div class="pills">${autres().map(id=>`<label><input type="checkbox" name="qui" value="${id}"><span class="pill">${esc(PROFILS[id].nom)}</span></label>`).join('')}</div></div>`:''}
+      <div class="sh-foot"><button type="button" class="btn ghost" data-act="close">Annuler</button><button class="btn">Créer la liste</button></div>
+    </form>`,{kind:'newListe'});
+  setTimeout(()=>{const i=$('#sheet input[name=nom]');if(i)i.focus()},280);
+}
+function openListe(id,focus){
+  const L=listeRef(id);if(!L)return closeSheet();const l=L.l;
+  const its=l.items.filter(x=>okIt(x)&&!x.del),open=its.filter(x=>!x.done),done=its.filter(x=>x.done);
+  const li=x=>`<li class="${x.done?'done':''}"><button class="ck" data-act="ckItem" data-iid="${esc(x.id)}">${x.done?'✓':''}</button><span>${esc(x.text)}</span><button class="del" data-act="delItem" data-iid="${esc(x.id)}" aria-label="Supprimer">×</button></li>`;
+  openSheet(`<div class="sh-head"><span class="tag t-ehpad">Liste</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
+    <h2>${esc(l.nom)}</h2><p class="meta">${avecL(l)?'Partagée avec '+esc(avecL(l)):'Rien que pour toi'}</p>
+    <form class="addrow" data-form="addItem" style="margin-top:14px"><input name="t" placeholder="Ajouter…" autocomplete="off" maxlength="120"><button>Ajouter</button></form>
+    <ul class="tasks">${open.map(li).join('')||'<li class="empty">Tout est pris ✓</li>'}</ul>
+    ${done.length?`<div class="tasks-h"><span>Pris (${done.length})</span><button class="del" data-act="clearItems" style="font-size:13px">Tout effacer</button></div><ul class="tasks">${done.map(li).join('')}</ul>`:''}
+    <div class="sh-foot"><button class="btn danger" data-act="delListe">Supprimer la liste</button></div>`,{kind:'liste',id});
+  if(focus){const i=$('#sheet input[name=t]');if(i)i.focus()}
+}
+
+function renderAll(){renderPlan();renderNow();renderUrg();renderListes();planRappels()}
 
 /* ---------- fit grid to screen height (desktop) ---------- */
 function fitHeight(){
@@ -745,6 +811,8 @@ function openDetails(type,k,id,focus){
   const tasks=ref.tasks||[],done=tasks.filter(t=>t.done).length;
   const html=`<div class="sh-head"><span class="tag t-cat" style="--c:${CATS[cat].color}">${esc(CATS[cat].name)}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
     <h2>${esc(title)}</h2><p class="meta">${dayLabel(k)} · ${time}</p>
+    ${type==='block'&&ref.qui&&ref.qui.length>1?`<div class="reacs">${REACS.map(e=>`<button class="rc${(ref.reac||{})[ME]===e?' on':''}" data-act="reac" data-e="${e}" aria-label="Réagir ${e}">${e}</button>`).join('')}</div>
+    ${Object.keys(ref.reac||{}).filter(q=>q!==ME&&PROFILS[q]&&REACS.includes(ref.reac[q])).map(q=>`<span class="meta">${esc(PROFILS[q].nom)} ${ref.reac[q]}</span>`).join(' · ')}`:''}
     <button class="impbtn${ref.imp?' on':''}" data-act="toggleImp"><span class="impdot"></span>${ref.imp?'Important':'Marquer comme important'}</button>
     <div class="tasks-h"><span>À faire</span><span>${done}/${tasks.length}</span></div>
     <ul class="tasks">${tasks.map(t=>`<li class="${t.done?'done':''}"><button class="ck" data-act="ckTask" data-tid="${t.id}">${t.done?'✓':''}</button><span>${esc(t.text)}</span><button class="del" data-act="delTask" data-tid="${t.id}" aria-label="Supprimer">×</button></li>`).join('')||`<li class="empty">Rien de prévu pour l'instant. Ajoute ce que tu dois faire ci-dessous.</li>`}</ul>
@@ -862,6 +930,17 @@ document.addEventListener('click',e=>{
     case 'ckTask':{if(!c)break;const r=refOf(c.type,c.k,c.id,true);const t=r&&(r.tasks||[]).find(x=>x.id===a.dataset.tid);if(t){t.done=!t.done;save();openDetails(c.type,c.k,c.id)}break}
     case 'delTask':{if(!c)break;const r=refOf(c.type,c.k,c.id,true);if(r){r.tasks=(r.tasks||[]).filter(x=>x.id!==a.dataset.tid);save();openDetails(c.type,c.k,c.id)}break}
     case 'edit':if(c&&c.id)openEditor({id:c.id});break;
+    case 'reac':{if(!c||c.type!=='block')break;const r=refOf('block',c.k,c.id);if(!r)break;const e2=a.dataset.e;r.reac={...r.reac};
+      if(r.reac[ME]===e2)delete r.reac[ME];else{r.reac[ME]=e2;aReac.push({id:r.id,e:e2})}if(!Object.keys(r.reac).length)delete r.reac;save();openDetails('block',c.k,c.id);break}
+    case 'listes':openListes();break;
+    case 'liste':openListe(a.dataset.id);break;
+    case 'newListe':openNewListe();break;
+    case 'ckItem':case 'delItem':{const L=listeRef(c&&c.id);const it=L&&L.l.items.find(x=>x.id===a.dataset.iid);if(!it)break;
+      if(act==='ckItem')it.done=!it.done;else Object.assign(it,{del:1,text:''});it.at=Date.now();marque(L);openListe(c.id);break}
+    case 'clearItems':{const L=listeRef(c&&c.id);if(!L)break;L.l.items.forEach(x=>{if(x.done&&!x.del)Object.assign(x,{del:1,text:'',at:Date.now()})});marque(L);openListe(c.id);break}
+    case 'delListe':{const L=listeRef(c&&c.id);if(!L)break;
+      if(!a.classList.contains('armed')){a.classList.add('armed');a.textContent='Confirmer ?';setTimeout(()=>{if(a.isConnected){a.classList.remove('armed');a.textContent='Supprimer la liste'}},3000);break}
+      Object.assign(L.l,{del:1,items:[],at:Date.now()});marque(L);closeSheet();toast('Liste supprimée');break}
     case 'delBlock':{
       if(!a.classList.contains('armed')){a.classList.add('armed');a.textContent='Confirmer ?';setTimeout(()=>{if(a.isConnected){a.classList.remove('armed');a.textContent='Supprimer'}},3000);break}
       state.blocks=state.blocks.filter(b=>b.id!==c.id);for(const g in parts)parts[g].blocks=parts[g].blocks.filter(b=>b.id!==c.id);save();closeSheet();break}
@@ -913,6 +992,17 @@ document.addEventListener('submit',e=>{
       save();openDetails('block',data.date,id);break;
     }
     case 'saveReglages':saveReglages(f);break;
+    case 'newListe':{
+      const nom=f.nom.value.trim();if(!nom)return;
+      const qui=[ME,...[...f.querySelectorAll('[name=qui]:checked')].map(x=>x.value)].sort(),l={id:uid(),nom,qui,par:ME,at:Date.now(),items:[]};
+      if(qui.length>1){const g=qui.join('_');parts[g]=parts[g]||{updatedAt:0,blocks:[]};(parts[g].lists=parts[g].lists||[]).push(l);marque({p:parts[g]})}
+      else{(state.listes=state.listes||[]).push(l);save()}
+      openListe(l.id,true);break;
+    }
+    case 'addItem':{
+      const txt=f.t.value.trim(),L=c&&listeRef(c.id);if(!txt||!L)return;
+      L.l.items.push({id:uid(),text:txt,done:false,at:Date.now(),par:ME});marque(L);openListe(c.id,true);break;
+    }
     case 'syncOn':{const t=f.t.value.trim();if(t)connect(t);break}
     case 'login':login(f);break;
     case 'mkPw':{
