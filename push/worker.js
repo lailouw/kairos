@@ -41,22 +41,51 @@ export async function vapid(endpoint, jwk) {
   return `vapid t=${unsigned}.${b64u(sig)}, k=${VAPID_PUBLIC}`;
 }
 
+const notif = d => JSON.stringify({ title: String(d.title).slice(0, 100), body: String(d.body).slice(0, 500), tag: String(d.tag || '').slice(0, 64) });
+const envoyer = async (endpoint, body, env) => fetch(endpoint, {
+  method: 'POST', body,
+  headers: { Authorization: await vapid(endpoint, JSON.parse(env.VAPID_PRIVATE_JWK)), 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400', Urgency: 'high' }
+});
+
+// Rappels programmés (tâches non cochées) : un Durable Object par abonnement, réveillé par une alarme à l'heure du prochain rappel.
+// Les textes sont chiffrés pour le téléphone dès la réception : ce qui est gardé ici est illisible pour le serveur.
+export class Rappels {
+  constructor(state, env) { this.state = state; this.env = env }
+  async fetch(req) { // la liste reçue remplace l'ancienne
+    const l = await req.json();
+    await this.state.storage.put('l', l);
+    if (l.length) await this.state.storage.setAlarm(Math.min(...l.map(r => r.at))); else await this.state.storage.deleteAlarm();
+    return new Response(null, { status: 204 });
+  }
+  async alarm() {
+    const l = await this.state.storage.get('l') || [], now = Date.now() + 30000;
+    for (const r of l.filter(r => r.at <= now)) await envoyer(r.endpoint, unb64u(r.body), this.env).catch(() => {});
+    const reste = l.filter(r => r.at > now);
+    await this.state.storage.put('l', reste);
+    if (reste.length) await this.state.storage.setAlarm(Math.min(...reste.map(r => r.at)));
+  }
+}
+
 export default {
   async fetch(req, env) {
     const cors = { 'Access-Control-Allow-Origin': ORIGIN, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' };
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
     if (req.method !== 'POST' || req.headers.get('Origin') !== ORIGIN) return new Response('non', { status: 403, headers: cors });
-    let sub, data;
+    let sub, data, rappels;
     try {
-      ({ sub, data } = await req.json());
+      ({ sub, data, rappels } = await req.json());
       const u = new URL(sub.endpoint);
       if (u.protocol !== 'https:' || !PUSH_HOSTS.test(u.hostname) || !sub.keys.p256dh || !sub.keys.auth) throw 0;
-      data = JSON.stringify({ title: String(data.title).slice(0, 100), body: String(data.body).slice(0, 500), tag: String(data.tag || '').slice(0, 64) });
+      if (new URL(req.url).pathname === '/rappels') { // { sub, rappels: [{ at, data }] } : au plus 50, dans les 8 jours ; remplace la liste précédente
+        const max = Date.now() + 8 * 864e5;
+        if (!Array.isArray(rappels) || rappels.length > 50 || rappels.some(r => !(r.at > 0 && r.at < max))) throw 0;
+        const l = await Promise.all(rappels.map(async r => ({ at: r.at, endpoint: sub.endpoint, body: b64u(await encrypt(sub, notif(r.data))) })));
+        await env.RAPPELS.get(env.RAPPELS.idFromName(sub.endpoint)).fetch('https://do/', { method: 'POST', body: JSON.stringify(l) });
+        return new Response(null, { status: 204, headers: cors });
+      }
+      data = notif(data);
     } catch (e) { return new Response('demande invalide', { status: 400, headers: cors }) }
-    const r = await fetch(sub.endpoint, {
-      method: 'POST', body: await encrypt(sub, data),
-      headers: { Authorization: await vapid(sub.endpoint, JSON.parse(env.VAPID_PRIVATE_JWK)), 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400', Urgency: 'high' }
-    });
+    const r = await envoyer(sub.endpoint, await encrypt(sub, data), env);
     return new Response(null, { status: r.ok ? 204 : r.status, headers: cors }); // 404/410 : abonnement expiré
   }
 };

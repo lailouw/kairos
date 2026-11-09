@@ -338,6 +338,7 @@ async function unlock(cle,pw){ // null si mauvais mot de passe
   try{const d=unb64(cle.split('.').pop());return JSON.parse(TD.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:d.slice(16,28)},await keyFrom(pw,d.slice(0,16)),d.slice(28))))}catch(e){return null}
 }
 // Prénom + mot de passe. Prénom sans compte : la même page demande le mot de passe une 2e fois et le jeton (une seule fois), crée le compte et connecte.
+let invTok=null; // jeton reçu par un lien d'invitation
 async function login(f){
   const err=t=>{$('#syncErr').textContent=t};
   const simple=s=>s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); // « lailou » = « Laïlou »
@@ -357,11 +358,11 @@ async function login(f){
     }catch(e){}
     return location.reload(); // tout repart avec les catégories et les données du profil choisi
   }
-  if(!neuf){$('#loginNew').hidden=false;f.t2.required=f.j.required=true;f.t2.focus();return err('')}
+  if(!neuf){$('#loginNew').hidden=false;f.t2.required=f.j.required=true;f.t2.focus();return err('')} // (avec une invitation, #loginNew est déjà ouvert et j caché)
   if(pw.length<10)return err('Mot de passe : 10 caractères minimum.');
   if(pw!==f.t2.value)return err('Les deux mots de passe ne sont pas pareils.');
   if(!p){p=simple(nom).replace(/[^a-z]/g,'').slice(0,30);if(!p||Object.hasOwn(PROFILS,p))return err('Ce prénom ne marche pas, essaie avec une autre écriture.')}
-  const tok=f.j.value.trim();if(!await checkToken(tok))return;
+  const tok=invTok||f.j.value.trim();if(!await checkToken(tok))return;
   err('Création du compte…');
   let k=null;try{k=JSON.parse(localStorage.getItem('zephir-cles-'+p))}catch(e){}
   if(!k||!k.pub||!k.priv||!k.d)k=await newCles(); // clés déjà sur cet appareil (mot de passe créé avant) : gardées, sinon les données en ligne seraient perdues
@@ -370,7 +371,7 @@ async function login(f){
   try{localStorage.setItem('zephir-cles-'+p,JSON.stringify(k));localStorage.setItem('zephir-profil',p)}catch(e){}
   location.reload();
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){pull();questionRappel()}});
 setInterval(()=>pull(),120000); // pour recevoir les nouvelles plages partagées pendant que l'appli est ouverte
 
 /* ---------- notification des nouvelles plages partagées ---------- */
@@ -409,12 +410,48 @@ async function abonner(){ // abonnement de cet appareil ; rangé ensuite dans le
   try{
     const r=await navigator.serviceWorker.ready;
     const s=await r.pushManager.getSubscription()||await r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:unb64(VAPID_PUB.replace(/-/g,'+').replace(/_/g,'/'))});
-    const j=JSON.stringify(s);if(j!==monAbo){monAbo=j;try{localStorage.setItem('zephir-abo',j)}catch(e){}pull()}
+    const j=JSON.stringify(s);if(j!==monAbo){monAbo=j;try{localStorage.setItem('zephir-abo',j)}catch(e){}pull();planRappels()}
   }catch(e){}
 }
 // la permission doit être demandée après un geste (obligatoire sur iPhone)
 if('Notification' in window){if(Notification.permission==='default')document.addEventListener('click',()=>Notification.requestPermission().then(abonner).catch(()=>{}),{once:true});else abonner()}
 window.addEventListener('online',()=>pull());
+
+/* ---------- rappels des tâches non cochées ---------- */
+// 10 min avant la fin d'une plage, une notif par tâche pas cochée, programmée sur le serveur (arrive même appli fermée).
+// Toucher la notif ou rouvrir l'appli pose la question : Oui = cochée ; Non = proposer de la décaler à la prochaine plage de la même catégorie.
+// t.vu = heure du dernier rappel déjà répondu pour cette tâche
+function rappels(avant,apres){
+  const out=[];
+  for(let d=-avant;d<=apres;d++){const k=key(addDays(new Date(),d));
+    for(const it of itemsForDay(k)){const at=parse(k).setMinutes(it.e-10);
+      for(const t of it.tasks)if(!t.done&&at>(t.vu||0))out.push({at,t,it})}}
+  return out.sort((a,b)=>a.at-b.at);
+}
+function planRappels(){clearTimeout(planRappels.t);planRappels.t=setTimeout(()=>{
+  if(!PUSH_URL||!monAbo||!profil)return;
+  const now=Date.now(),l=rappels(0,7).filter(r=>r.at>now).slice(0,50)
+    .map(r=>({at:r.at,data:{title:'ZEPHIR',body:`Tâche : « ${r.t.text} » non cochée, est-elle faite ?`,tag:r.t.id+r.at}}));
+  const j=JSON.stringify([monAbo,l]);let av=null;try{av=localStorage.getItem('zephir-rappels')}catch(e){}
+  if(j===av)return; // rien de changé depuis le dernier envoi
+  fetch(PUSH_URL+'/rappels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sub:JSON.parse(monAbo),rappels:l})})
+    .then(r=>{if(r.ok)try{localStorage.setItem('zephir-rappels',j)}catch(e){}}).catch(()=>{});
+},2000)}
+// depuis : ne montrer que les rappels arrivés après cette heure (le tic de chaque minute ne doit pas reposer une question fermée)
+function questionRappel(depuis){
+  if(!profil||sheetCtx)return;
+  const now=Date.now(),r=rappels(3,0).find(r=>r.at<=now&&r.at>(depuis||0));if(!r)return;
+  const {t,it}=r;
+  openSheet(`<div class="sh-head"><span class="tag t-cat" style="--c:${CATS[it.cat].color}">${esc(CATS[it.cat].name)}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
+    <h2>« ${esc(t.text)} »</h2><p class="meta">${esc(it.title)} · ${dayLabel(it.date)} · ${hfmt(it.s)} – ${hfmt(it.e)}</p>
+    <p id="rpQ">Non cochée : est-elle faite ?</p>
+    <div class="sh-foot" id="rpBtns"><button class="btn ghost" data-act="rpNon">Non</button><button class="btn" data-act="rpOui">Oui</button></div>`,{kind:'rappel',r});
+}
+function prochaine(it){ // prochaine plage de la même catégorie, qui commence après maintenant
+  const now=Date.now();
+  for(let d=0;d<60;d++){const k=key(addDays(new Date(),d));
+    const n=itemsForDay(k).find(x=>x.cat===it.cat&&parse(k).setMinutes(x.s)>now);if(n)return n}
+}
 
 /* ---------- export / import ---------- */
 function exportData(){
@@ -464,7 +501,9 @@ function openData(){
     <p class="meta"><b>État : ${esc($('#sync').title||'—')}</b></p>
     <p class="meta">${diagNotifs()}</p>
     ${sync?`<p class="meta">Connecté à GitHub : tes données passent d'un appareil à l'autre.</p>
-    <div class="sh-foot"><button class="btn ghost" data-act="syncNow">Synchroniser</button><button class="btn danger" data-act="syncOff">Déconnecter</button></div>`
+    <div class="sh-foot"><button class="btn ghost" data-act="syncNow">Synchroniser</button><button class="btn danger" data-act="syncOff">Déconnecter</button></div>
+    <div class="sh-foot"><button class="btn ghost" data-act="invite">Inviter quelqu'un (lien valable 24 h)</button></div>
+    <p class="meta" id="invInfo" hidden>Lien copié : envoie-le seulement à la personne invitée (SMS, WhatsApp…), il donne l'accès à l'appli pendant 24 h.</p><input class="inp" id="invOut" readonly hidden style="margin-top:10px">`
     :`<p class="meta">Colle ton jeton GitHub (droit « Gists » seulement), le même sur chaque appareil. La version la plus récente (en ligne ou sur cet appareil) est gardée, l'autre est mise de côté.</p>
     <form class="addrow" data-form="syncOn"><input name="t" type="password" placeholder="github_pat_…" autocomplete="off"><button>Connecter</button></form>`}
     <div class="err" id="syncErr"></div>
@@ -651,7 +690,7 @@ function renderUrg(){
   if(keep){const i=p.querySelector('input[name=t]');i.value=draft;i.focus()}
 }
 
-function renderAll(){renderPlan();renderNow();renderUrg()}
+function renderAll(){renderPlan();renderNow();renderUrg();planRappels()}
 
 /* ---------- fit grid to screen height (desktop) ---------- */
 function fitHeight(){
@@ -807,6 +846,10 @@ document.addEventListener('click',e=>{
     case 'export':exportData();break;
     case 'importGo':applyImport();break;
     case 'syncNow':closeSheet();pull();break;
+    case 'invite':{ // jeton en base64 (pas en clair, sinon GitHub le repère et le révoque si le lien atterrit sur GitHub)
+      const l=location.origin+location.pathname+'#inv='+btoa(JSON.stringify({t:sync.token,e:Date.now()+864e5}));
+      const o=$('#invOut');o.value=l;o.hidden=$('#invInfo').hidden=false;o.select();
+      navigator.clipboard&&navigator.clipboard.writeText(l).then(()=>toast('Lien copié ✓'),()=>{});break}
     case 'restore':{const b=backupOf();if(!b)break;state=b;fixState();save();closeSheet();toast('Version précédente remise ✓');break}
     case 'syncOff':sync=null;saveSync();pulled=false;setSync('local');openData();break;
     // les clés ne sont effacées que si le mot de passe peut les rendre (ligne cle dans l'appli)
@@ -824,6 +867,16 @@ document.addEventListener('click',e=>{
       state.blocks=state.blocks.filter(b=>b.id!==c.id);for(const g in parts)parts[g].blocks=parts[g].blocks.filter(b=>b.id!==c.id);save();closeSheet();break}
     case 'ckUrg':{const u=state.urgent.find(x=>x.id===a.dataset.id);if(u){u.done=!u.done;u.doneAt=Date.now();save()}break}
     case 'delUrg':state.urgent=state.urgent.filter(x=>x.id!==a.dataset.id);save();break;
+    case 'rpOui':{if(!c||c.kind!=='rappel')break;c.r.t.done=true;save();closeSheet();toast('Tâche cochée ✓');questionRappel();break}
+    case 'rpNon':{if(!c||c.kind!=='rappel')break;const n=c.n=prochaine(c.r.it),nom=esc(CATS[c.r.it.cat].name);
+      $('#rpQ').innerHTML=n?`Décaler à la prochaine plage ${nom} ?<br><span class="meta">${dayLabel(n.date)} · ${hfmt(n.s)} – ${hfmt(n.e)}</span>`:`Pas d'autre plage ${nom} prévue pour l'instant.`;
+      $('#rpBtns').innerHTML=`<button class="btn ghost" data-act="rpLaisser">${n?'Laisser':'OK'}</button>${n?`<button class="btn" data-act="rpDecaler">Décaler</button>`:''}`;break}
+    case 'rpLaisser':{if(!c||c.kind!=='rappel')break;c.r.t.vu=c.r.at;save();closeSheet();questionRappel();break}
+    case 'rpDecaler':{if(!c||!c.n)break;const {r,n}=c;
+      if(n.date===r.it.date&&n.type==='ehpad'&&r.it.type==='ehpad')r.t.vu=r.at; // même poste coupé : la tâche y est déjà
+      else{const i=r.it.tasks.indexOf(r.t);if(i>=0)r.it.tasks.splice(i,1);delete r.t.vu;
+        const dst=refOf(n.type,n.date,n.id,true);(dst.tasks=dst.tasks||[]).push(r.t)}
+      save();closeSheet();toast(`Décalée à ${dayLabel(n.date)} ${hfmt(n.s)} ✓`);questionRappel();break}
     case 'clearUrg':state.urgent=state.urgent.filter(x=>!x.done);save();break;
   }
 });
@@ -911,11 +964,20 @@ requestAnimationFrame(fitHeight);
 document.fonts&&document.fonts.ready&&document.fonts.ready.then(fitHeight);
 setTimeout(()=>$('#splash').classList.add('out'),2200);
 setInterval(tickClock,1000);
-setInterval(()=>{if(!sheetCtx){renderPlan();renderNow()}},60000);
+setInterval(()=>{if(!sheetCtx){renderPlan();renderNow();questionRappel(Date.now()-60000)}},60000);
 setSync('local');
 // page de connexion sous l'écran de lancement : visible quand il s'efface, retirée si déjà connecté (et son #syncErr avec)
-if(profil){$('#login').remove();pull();lireComptes().catch(()=>{})} // nouveaux comptes : visibles dans « Partagé avec » au prochain affichage
-else $('#login .logo').innerHTML=$('#splash .logo').innerHTML; // mot de passe toujours demandé, même si l'appareil connaît déjà le jeton
+if(profil){$('#login').remove();pull();questionRappel();lireComptes().catch(()=>{})} // nouveaux comptes : visibles dans « Partagé avec » au prochain affichage
+else{
+  $('#login .logo').innerHTML=$('#splash .logo').innerHTML; // mot de passe toujours demandé, même si l'appareil connaît déjà le jeton
+  // lien d'invitation (#inv=…) : le jeton est pris dans le lien, la personne choisit juste prénom + mot de passe
+  // shortcut: l'expiration est vérifiée par l'appli seulement ; quelqu'un qui décode le lien à la main a le jeton. Pour une vraie expiration, passer par le Worker.
+  const m=location.hash.match(/^#inv=([A-Za-z0-9+/=]+)$/);
+  if(m){history.replaceState(null,'',location.pathname+location.search);let v=null;try{v=JSON.parse(atob(m[1]))}catch(e){}
+    if(!v||typeof v.t!=='string'||!(v.e>Date.now()))$('#syncErr').textContent='Invitation expirée ou abîmée : demande un nouveau lien.';
+    else{invTok=v.t;const f=$('#login form');$('#loginNew').hidden=false;f.j.hidden=true;f.t2.required=true;
+      $('#loginMsg').textContent='Invitation reçue ✓ Choisis ton prénom et ton mot de passe (10 caractères minimum), puis retape-le.'}}
+}
 })();
 
 /* ---------- mode hors connexion (PWA) ---------- */

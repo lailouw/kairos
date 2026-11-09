@@ -1,7 +1,7 @@
 // Vérifie le serveur sans rien envoyer : node push/test.mjs
 // Déchiffre le message comme le ferait le téléphone, et contrôle la signature VAPID.
 import assert from 'node:assert';
-import { encrypt, vapid } from './worker.js';
+import worker, { encrypt, vapid, Rappels } from './worker.js';
 const s = crypto.subtle, TE = new TextEncoder(), ECDH = { name: 'ECDH', namedCurve: 'P-256' };
 const hkdf = async (salt, ikm, info, len) => new Uint8Array(await s.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, await s.importKey('raw', ikm, 'HKDF', false, ['deriveBits']), len * 8));
 const cat = (...a) => Uint8Array.from(a.flatMap(x => [...x]));
@@ -29,4 +29,20 @@ const [, jwt] = h.match(/^vapid t=([^,]+), k=/);
 const [hd, pl, sig] = jwt.split('.');
 assert.equal(JSON.parse(Buffer.from(pl, 'base64url')).aud, 'https://fcm.googleapis.com');
 assert.ok(await s.verify({ name: 'ECDSA', hash: 'SHA-256' }, kp.publicKey, Buffer.from(sig, 'base64url'), TE.encode(hd + '.' + pl)));
-console.log('ok : chiffrement et signature corrects');
+
+// rappels : la route /rappels range la liste chiffrée, l'alarme envoie ce qui est dû et se reprogramme pour le reste
+const env = { VAPID_PRIVATE_JWK: JSON.stringify(await s.exportKey('jwk', kp.privateKey)) };
+const mem = new Map(); let alarme = null;
+const storage = { put: async (k, v) => mem.set(k, v), get: async k => mem.get(k), setAlarm: async t => alarme = t, deleteAlarm: async () => alarme = null };
+const doc = new Rappels({ storage }, env);
+env.RAPPELS = { idFromName: n => n, get: () => ({ fetch: (u, o) => doc.fetch(new Request(u, o)) }) };
+const now = Date.now(), req = rappels => new Request('https://w/rappels', { method: 'POST', headers: { Origin: 'https://lailouw.github.io' }, body: JSON.stringify({ sub, rappels }) });
+assert.equal((await worker.fetch(req([{ at: now - 1000, data: { title: 'ZEPHIR', body: 'a' } }, { at: now + 3600e3, data: { title: 'ZEPHIR', body: 'b' } }]), env)).status, 204);
+assert.equal(alarme, now - 1000);
+assert.ok(!JSON.stringify(mem.get('l')).includes('"b"')); // gardé chiffré
+const envoyes = []; globalThis.fetch = async (u, o) => { envoyes.push(u); return new Response(null, { status: 201 }) };
+await doc.alarm();
+assert.equal(envoyes.length, 1); assert.equal(mem.get('l').length, 1); assert.equal(alarme, now + 3600e3);
+assert.equal((await worker.fetch(req([{ at: now + 30 * 864e5, data: {} }]), env)).status, 400); // trop loin
+await worker.fetch(req([]), env); assert.equal(alarme, null);
+console.log('ok : chiffrement, signature et rappels corrects');
