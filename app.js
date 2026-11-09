@@ -8,11 +8,11 @@ const MONTHS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.
 // Une plage peut être partagée avec d'autres profils (« Partagé avec ») : elle apparaît alors dans leurs calendriers.
 const PROFILS={
   // cle = la ligne « Mes données » → Créer mon mot de passe (clé publique . jeton + clés perso chiffrés par le mot de passe).
-  // Vide : le mot de passe est le jeton lui-même, et pas de synchro tant que le mot de passe n'est pas créé (rien n'est envoyé en clair).
+  // Vide : la ligne est prise dans le Gist public des comptes (créée depuis la page de connexion). Pas de synchro sans mot de passe (rien n'est envoyé en clair).
   // groupe : sert seulement aux anciennes plages 'love' sans « Partagé avec » (partagées avec le groupe, comme avant).
   moi:{nom:'Laïlou',cle:'BM+QGygflzWq3lSDccMjEV1Pp5knbotjV7Mbjzqpk0HCJVoxY0gZtTnJDXb3KBwMfbPTPLZJTpLXsPCRRHWYHJc=.LSYqhmifdE6XeowS0eidlNa7tQSKNRv7PJm96jFffn4Zqea5EMOUYtbQpBo4qnds2KHMx/jycHPdcK9EQbB4CxOWDFjVaY80qEkYZh/PpiETcyQsbi5dAaiuV/kEa6rcY8AJ3ZWQwRI/Sy3RUqhS3oDn8JX5B6x6n0VnArURjjgPFZmnGPBPZ7DVle0FVKJ6dVGhN/oXai2v4bywmhs+uZyDOPpQudBIfkpafVoQR9JzOQAjbuJ1qth7RDxNEP3A09VIJdmWwZZ3h50WeMULXJBZtdTkIFafHzB/4+grv9q4wtwBOXD9pgyg0bssIqqS0Bc2XDl3zny0Rt9EjPNpqpOv5iHfgefMC8w+kU+nu47VwlDzarLiE8H8mmFURaHsIF+Xw4GdlTfg7Y+wS4o8x0dEujAhNwAY4Kdman74zEHF/h16dqM5vrd6exa8bBiVOwxrkcWToajpa4q6tHhVlgzX4O/jYlnANm9ADL3McaorhE8HzVrXfW8utYTsLgyL5HG2',groupe:'couple',store:'zephir-state',file:'zephir.json'},
   clara:{nom:'Clara',cle:'BANTh7KqBY03Hs/6QWoSkBfDQg3tFSK4qYyPPdBxWI7LceGYwfSPk3COHY+ezFm2ZCSMzHKvi3DaNnjpHd4+E0Q=.iY34ZEaLZ0ILg0T8AJx/GNxui9VtDJay/lo0hLjKxcB1LeDvWecS0MWisN4gziqplmUBzocPT/pt+hUo3gAfYVrce9sOesN9h64/XfWJhBAQZNoy/E7699sDEry67Rpb8s+vEUt0eNl9Zm0s0or91YtjTgoLthU4Fx+SG2nr87Pm2Xl3b9CS6Hv2s8sR1iepqfFtiyQ3Chg5QxREaiw+rjxzk582vhjnacRhK6Hw9ERzY6ScnmJTJIAv6MtjnjiNOZXA/IwU2IvkWgCwtnzUyAbktbHFp8eZL2AbV0L8Y1mj5jJAxaJ/a64GWk8GwG3t8fiq82J0p1OEOYMRV84GquUb2iK6N+REgrhW3SyC5H5o+e0UgmEC4xvCVsS3p0vyt7lJS1fJznOYks/dEi7fo0lOEvRKXIGAIXQClgvc4ibHXVaFCgcgXGmb1gACBphWjZcCfPV4wFHpsTWjFVw83i59qtktRyAQ+CVuRlfx7IpbXLNALxuLUo0w9HYasbUxfiXy',groupe:'couple',store:'zephir-state-clara',file:'zephir-clara.json'},
-  marvin:{nom:'Marvin',cle:'',store:'zephir-state-marvin',file:'zephir-marvin.json'}
+  marvin:{nom:'Marvin',cle:'BFYsKXQF2P0cB2CwCa+ODHquo3nTNbNPUOjmsvyKpm/gG3x94vVY0rMOTOz0LQCqKcnATlSV9dAK8K/Q38bS1O8=.vhSzj1SCybAMdJ0Va8bLQ23fT1AohbhgO7i9ZlCDpNlD26JrAF6KCSRWk7WYGtdT/E/1Bsjmy2eoNujxF54uNa3qqFPNWSRpxl4vXV2J6+XJGqNhQlms9MlbdjDjQOp4mxezVWDoOtKV00Bu9gPyh0HJz78BmOxEtSTPKDXu6WGSa068SBQf7xpsmqsjf7XyAwH4UPO4dMXqvWCf8m/OF6+s+H35WfUFiWabhoLYDBlX+o3ObpOpei003tSbzLZ5H9FbZkV/Sd6XssuB1w9FLv4nPnDXoo6dUJKdw+UB4dx11pRXo46e86QQ7LKf0dqghswfXR0FD3kHREODkFJwKHRBmDdy5HNnGISypKWP2MFKpf5SGq1q5MEQNTNLURVc3kyajtsggLDZGKWUovSmcz92HMUeiL1LqijhxOWSwqr+VjFV0ZHC1p8yaUNEQ89/2X7cCC8SpSmTobCpIhDd1luDJWZNoh3/cfi48oR9cvUmU2A0/N6LDUbZs0Hemi61sISx',store:'zephir-state-marvin',file:'zephir-marvin.json'}
 };
 // Réglages d'un nouveau profil. La catégorie 'ehpad' = le travail à postes (nom gardé pour ne pas toucher aux données ni au CSS) ; 'ehpad' et 'other' existent toujours.
 // semaine = poste habituel par jour (0 = dimanche) ; cats[x].qui = profils avec qui une plage de cette catégorie est partagée par défaut.
@@ -67,6 +67,13 @@ const REGLAGES0={
 };
 // renommage KairOs → ZEPHIR : une seule fois, on recopie les anciennes données 'kairos-…' en 'zephir-…' (les anciennes ne sont jamais effacées)
 try{if(!localStorage.getItem('zephir-migre')){for(const k of Object.keys(localStorage))if(k.startsWith('kairos-')&&localStorage.getItem('zephir-'+k.slice(7))===null)localStorage.setItem('zephir-'+k.slice(7),localStorage.getItem(k));localStorage.setItem('zephir-migre','1')}}catch(e){}
+// Comptes créés depuis la page de connexion : rangés dans un Gist public (une ligne cle n'est lisible qu'avec le mot de passe, comme celles ci-dessus déjà publiques dans le dépôt).
+// shortcut: quelqu'un qui a le jeton peut remplacer la ligne d'un compte du Gist (pas celles écrites dans PROFILS, qui passent devant) ; coller la ligne dans PROFILS pour la figer.
+const okCle=c=>typeof c==='string'&&/^[A-Za-z0-9+/]{86}[A-Za-z0-9+/=]{2}\.[A-Za-z0-9+/=]+$/.test(c);
+function addComptes(c){for(const id in c){const x=c[id];if(!/^[a-z]{1,30}$/.test(id)||!x||!okCle(x.cle)||typeof x.nom!=='string')continue; // lettres seules : l'id sert dans les noms de fichiers de groupe (a_b)
+  if(!Object.hasOwn(PROFILS,id))PROFILS[id]={nom:x.nom.slice(0,40),cle:x.cle,store:'zephir-state-'+id,file:'zephir-p-'+id+'.json'};else if(!PROFILS[id].cle)PROFILS[id].cle=x.cle}}
+const CLE_CODE=new Set(Object.keys(PROFILS).filter(id=>PROFILS[id].cle)); // lignes écrites ici : un nouveau mot de passe doit aussi y être recopié
+try{addComptes(JSON.parse(localStorage.getItem('zephir-comptes'))||{})}catch(e){}
 let profil=null;try{profil=localStorage.getItem('zephir-profil')}catch(e){}
 if(!PROFILS[profil])profil=null; // pas encore connecté : page de connexion
 const P=PROFILS[profil||'moi'];let SHIFTS,CATS; // SHIFTS, CATS : les réglages du profil (state.reglages), remis par fixState()
@@ -177,6 +184,21 @@ async function findGist(descs,old){ // un autre appareil l'a peut-être déjà c
 async function readFile(g,name,old){
   const f=g.files[name]||(old&&g.files[name.replace(/^zephir/,'kairos')]);if(!f)return null;
   return JSON.parse(f.truncated?await fetch(f.raw_url,{cache:'no-store'}).then(r=>r.text()):f.content);
+}
+const CDESC='ZEPHIR – comptes (ne pas supprimer)',CFILE='zephir-comptes.json',GH_USER='lailouw'; // GH_USER = compte GitHub du jeton partagé
+async function lireComptes(){ // sans jeton (page de connexion) : liste des Gists publics de GH_USER
+  const l=await fetch(GH+'/users/'+GH_USER+'/gists?per_page=100',{cache:'no-store'}).then(r=>{if(!r.ok)throw r.status;return r.json()});
+  const f=(l.find(x=>x.description===CDESC)||{files:{}}).files[CFILE];
+  const c=f?await fetch(f.raw_url,{cache:'no-store'}).then(r=>r.json()):{};
+  addComptes(c);try{localStorage.setItem('zephir-comptes',JSON.stringify(c))}catch(e){}
+}
+async function ecrireCompte(id,nom,cle,remplacer){ // avec le jeton ; refuse d'écraser un compte existant (sauf changement de mot de passe)
+  const gid=await findGist([CDESC]),c=(gid&&await readFile(await gh('/gists/'+gid),CFILE))||{};
+  if(c[id]&&!remplacer)throw 'pris';
+  c[id]={nom,cle};const files={[CFILE]:{content:JSON.stringify(c)}};
+  if(gid)await gh('/gists/'+gid,{method:'PATCH',body:JSON.stringify({files})});
+  else await gh('/gists',{method:'POST',body:JSON.stringify({description:CDESC,public:true,files})});
+  try{localStorage.setItem('zephir-comptes',JSON.stringify(c))}catch(e){}
 }
 async function ancien(name){ // ancienne sauvegarde en clair, lue seulement (appareil neuf)
   try{
@@ -315,20 +337,38 @@ async function lock(obj,pw){
 async function unlock(cle,pw){ // null si mauvais mot de passe
   try{const d=unb64(cle.split('.').pop());return JSON.parse(TD.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:d.slice(16,28)},await keyFrom(pw,d.slice(0,16)),d.slice(28))))}catch(e){return null}
 }
-async function login(nom,pw){
+// Prénom + mot de passe. Prénom sans compte : la même page demande le mot de passe une 2e fois et le jeton (une seule fois), crée le compte et connecte.
+async function login(f){
+  const err=t=>{$('#syncErr').textContent=t};
   const simple=s=>s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); // « lailou » = « Laïlou »
-  const p=Object.keys(PROFILS).find(id=>simple(PROFILS[id].nom)===simple(nom));
-  if(!p){$('#syncErr').textContent='Prénom inconnu.';return}
-  if(!pw){$('#syncErr').textContent='Mot de passe manquant.';return}
-  const c=PROFILS[p].cle;let token=pw,u=null;
-  if(c){$('#syncErr').textContent='Vérification…';u=await unlock(c,pw);if(!u){$('#syncErr').textContent='Mot de passe incorrect.';return}token=u.t}
-  if(!await checkToken(token))return;
-  try{
-    localStorage.setItem('zephir-profil',p);
-    if(u){let old=null;try{old=JSON.parse(localStorage.getItem('zephir-cles-'+p))}catch(e){}
-      localStorage.setItem('zephir-cles-'+p,JSON.stringify({pub:c.split('.')[0],priv:u.x,d:u.d,ks:old&&old.d===u.d?(old.ks||(old.k?{clara_moi:old.k}:undefined)):undefined}))}
-  }catch(e){}
-  location.reload(); // tout repart avec les catégories et les données du profil choisi
+  const nom=f.nom.value.trim(),pw=f.t.value,neuf=!$('#loginNew').hidden;
+  if(!nom||!pw)return err('Prénom et mot de passe, s\'il te plaît.');
+  err('Vérification…');
+  try{await lireComptes()}catch(e){} // hors ligne : on garde les comptes déjà connus
+  let p=Object.keys(PROFILS).find(id=>simple(PROFILS[id].nom)===simple(nom));
+  const c=p&&PROFILS[p].cle;
+  if(c){
+    const u=await unlock(c,pw);if(!u)return err('Mot de passe incorrect.');
+    if(!await checkToken(u.t))return;
+    try{
+      let old=null;try{old=JSON.parse(localStorage.getItem('zephir-cles-'+p))}catch(e){}
+      localStorage.setItem('zephir-cles-'+p,JSON.stringify({pub:c.split('.')[0],priv:u.x,d:u.d,ks:old&&old.d===u.d?(old.ks||(old.k?{clara_moi:old.k}:undefined)):undefined}));
+      localStorage.setItem('zephir-profil',p);
+    }catch(e){}
+    return location.reload(); // tout repart avec les catégories et les données du profil choisi
+  }
+  if(!neuf){$('#loginNew').hidden=false;f.t2.required=f.j.required=true;f.t2.focus();return err('')}
+  if(pw.length<10)return err('Mot de passe : 10 caractères minimum.');
+  if(pw!==f.t2.value)return err('Les deux mots de passe ne sont pas pareils.');
+  if(!p){p=simple(nom).replace(/[^a-z]/g,'').slice(0,30);if(!p||Object.hasOwn(PROFILS,p))return err('Ce prénom ne marche pas, essaie avec une autre écriture.')}
+  const tok=f.j.value.trim();if(!await checkToken(tok))return;
+  err('Création du compte…');
+  let k=null;try{k=JSON.parse(localStorage.getItem('zephir-cles-'+p))}catch(e){}
+  if(!k||!k.pub||!k.priv||!k.d)k=await newCles(); // clés déjà sur cet appareil (mot de passe créé avant) : gardées, sinon les données en ligne seraient perdues
+  try{await ecrireCompte(p,PROFILS[p]?PROFILS[p].nom:nom.slice(0,40),k.pub+'.'+await lock({t:tok,x:k.priv,d:k.d},pw))}
+  catch(e){sync=null;saveSync();return err(e==='pris'?'Ce prénom a déjà un compte : vérifie ton mot de passe.':'Compte pas enregistré en ligne, réessaie.')}
+  try{localStorage.setItem('zephir-cles-'+p,JSON.stringify(k));localStorage.setItem('zephir-profil',p)}catch(e){}
+  location.reload();
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull()});
 setInterval(()=>pull(),120000); // pour recevoir les nouvelles plages partagées pendant que l'appli est ouverte
@@ -429,7 +469,7 @@ function openData(){
     <form class="addrow" data-form="syncOn"><input name="t" type="password" placeholder="github_pat_…" autocomplete="off"><button>Connecter</button></form>`}
     <div class="err" id="syncErr"></div>
     ${sync&&P.cle&&!cles?`<h2 style="margin-top:22px">Mot de passe</h2><p class="meta">Ton mot de passe existe déjà : déconnecte-toi puis reconnecte-toi avec lui pour reprendre la synchro.</p>`
-    :sync?`<h2 style="margin-top:22px">Mot de passe</h2><p class="meta">${cles?'':'<b>Synchro en pause tant que tu n\'as pas de mot de passe.</b> '}Choisis ton mot de passe (10 caractères minimum) : tes données en ligne seront chiffrées avec, personne d'autre ne pourra les lire. Envoie la ligne obtenue à Laïlou pour qu'elle soit mise dans l'appli. Garde ton mot de passe : sans lui, la copie en ligne est perdue.</p>
+    :sync?`<h2 style="margin-top:22px">Mot de passe</h2><p class="meta">${cles?'':'<b>Synchro en pause tant que tu n\'as pas de mot de passe.</b> '}Choisis ton mot de passe (10 caractères minimum) : tes données en ligne seront chiffrées avec, personne d'autre ne pourra les lire. Il est enregistré tout seul pour tes autres appareils${CLE_CODE.has(profil)?' ; ton profil étant écrit dans le code, envoie aussi la ligne obtenue à Laïlou':''}. Garde ton mot de passe : sans lui, la copie en ligne est perdue.</p>
     <form class="addrow" data-form="mkPw"><input name="a" type="password" placeholder="Mot de passe" minlength="10" autocomplete="new-password" required><input name="b" type="password" placeholder="Encore une fois" autocomplete="new-password" required><button>Créer</button></form>
     <div class="err" id="pwErr"></div><input class="inp" id="pwOut" readonly hidden style="margin-top:10px">`:''}
     <div class="sh-foot"><button class="btn ghost" data-act="logout">Changer de profil (${esc(P.nom)})</button></div>
@@ -821,7 +861,7 @@ document.addEventListener('submit',e=>{
     }
     case 'saveReglages':saveReglages(f);break;
     case 'syncOn':{const t=f.t.value.trim();if(t)connect(t);break}
-    case 'login':login(f.nom.value,f.t&&f.t.value.trim());break;
+    case 'login':login(f);break;
     case 'mkPw':{
       if(f.a.value!==f.b.value){$('#pwErr').textContent='Les deux mots de passe ne sont pas pareils.';return}
       $('#pwErr').textContent='';
@@ -830,7 +870,7 @@ document.addEventListener('submit',e=>{
         $('#pwErr').textContent='Chiffrement…';
         const neuf=!cles;if(neuf){cles=await newCles();saveCles()} // clés gardées si on change juste de mot de passe
         const cle=cles.pub+'.'+await lock({t:sync.token,x:cles.priv,d:cles.d},f.a.value);
-        $('#pwErr').textContent='';
+        try{await ecrireCompte(profil,P.nom,cle,true);$('#pwErr').textContent=''}catch(e){$('#pwErr').textContent='Pas enregistré en ligne : garde la ligne ci-dessous et réessaie plus tard.'}
         const o=$('#pwOut');o.value=cle;o.hidden=false;o.select();
         navigator.clipboard&&navigator.clipboard.writeText(cle).then(()=>toast('Ligne copiée ✓'),()=>{});
         if(neuf){pulled=false;pull(true)}
@@ -874,7 +914,7 @@ setInterval(tickClock,1000);
 setInterval(()=>{if(!sheetCtx){renderPlan();renderNow()}},60000);
 setSync('local');
 // page de connexion sous l'écran de lancement : visible quand il s'efface, retirée si déjà connecté (et son #syncErr avec)
-if(profil){$('#login').remove();pull()}
+if(profil){$('#login').remove();pull();lireComptes().catch(()=>{})} // nouveaux comptes : visibles dans « Partagé avec » au prochain affichage
 else $('#login .logo').innerHTML=$('#splash .logo').innerHTML; // mot de passe toujours demandé, même si l'appareil connaît déjà le jeton
 })();
 
