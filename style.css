@@ -106,6 +106,7 @@ input,select{font:inherit;color:inherit}
   background:color-mix(in srgb,var(--c) var(--a),var(--bg));color:color-mix(in srgb,var(--c) 55%,#fff)}
 .blk::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c)}
 .blk:hover{--a:24%}
+.blk.over{z-index:3;box-shadow:0 0 0 1.5px var(--bg),0 2px 6px rgba(0,0,0,.4)}
 .blk:active{transform:scale(.97)}
 .bt{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .blk.short .bh{display:none}

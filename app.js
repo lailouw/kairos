@@ -65,6 +65,13 @@ const REGLAGES0={
       other:{name:'Autres',color:'#E0B36A',ph:'Ex : courses, ménage, sport'}
     }}
 };
+const PLANNING_PLUS={clara:{'2026-12':{
+  '2026-11-30':'Aprem','2026-12-01':'Journée','2026-12-02':'Congé','2026-12-03':'Journée','2026-12-04':'10:00-12:30,14:00-18:00','2026-12-05':'Continu',
+  '2026-12-07':'Aprem','2026-12-08':'Journée','2026-12-09':'Congé','2026-12-10':'Journée','2026-12-11':'Aprem','2026-12-12':'Continu','2026-12-13':'10:00-18:00',
+  '2026-12-14':'Aprem','2026-12-15':'Aprem','2026-12-16':'Congé','2026-12-17':'Journée','2026-12-18':'10:00-18:00','2026-12-19':'Continu','2026-12-20':'10:00-18:00',
+  '2026-12-21':'Aprem','2026-12-22':'10:00-19:00','2026-12-23':'10:00-19:00','2026-12-24':'10:00-17:00','2026-12-25':'Férié','2026-12-26':'Continu',
+  '2026-12-28':'Aprem','2026-12-29':'Journée','2026-12-30':'13:00-19:00','2026-12-31':'10:00-17:00','2027-01-01':'Férié','2027-01-02':'Continu'
+}}};
 // renommage KairOs → ZEPHIR : une seule fois, on recopie les anciennes données 'kairos-…' en 'zephir-…' (les anciennes ne sont jamais effacées)
 try{if(!localStorage.getItem('zephir-migre')){for(const k of Object.keys(localStorage))if(k.startsWith('kairos-')&&localStorage.getItem('zephir-'+k.slice(7))===null)localStorage.setItem('zephir-'+k.slice(7),localStorage.getItem(k));localStorage.setItem('zephir-migre','1')}}catch(e){}
 // Comptes créés depuis la page de connexion : rangés dans un Gist public (une ligne cle n'est lisible qu'avec le mot de passe, comme celles ci-dessus déjà publiques dans le dépôt).
@@ -112,6 +119,9 @@ function fixState(){
     for(const k in r.planning||{})if(!(k in state.shifts))state.shifts[k]=r.planning[k];
     delete r.planning;state.reglages=r;
   }
+  // plannings papier arrivés après coup : recopiés une seule fois par mois (state.plannings = mois déjà faits ; un choix fait dans l'appli passe devant)
+  const pp=PLANNING_PLUS[profil]||{};if(!Array.isArray(state.plannings))state.plannings=[];
+  for(const m in pp)if(!state.plannings.includes(m)){for(const k in pp[m])if(!(k in state.shifts))state.shifts[k]=pp[m][k];state.plannings.push(m)}
   SHIFTS=state.reglages.postes;CATS=state.reglages.cats;
 }
 let state=null;
@@ -610,9 +620,10 @@ let tab='plan';
 // ordre : choix fait dans l'appli ('' = « Pas encore connu » choisi exprès) > semaine type des réglages (0 = dimanche)
 const defOf=k=>state.reglages.semaine[parse(k).getDay()]||'';
 const codeOf=k=>k in state.shifts?state.shifts[k]:defOf(k);
-const isHours=c=>/^\d\d:\d\d-\d\d:\d\d$/.test(c||'');
-const shOf=c=>(Object.hasOwn(SHIFTS,c||'')&&SHIFTS[c])||(isHours(c)?{name:'Heures du jour',segs:[c.split('-')]}:null);
-const codeLbl=c=>isHours(c)?hfmt(t2m(c.slice(0,5)))+'-'+hfmt(endMin(c.slice(6))):c;
+// plusieurs plages possibles, séparées par une virgule : '10:00-12:30,14:00-18:00'
+const isHours=c=>/^\d\d:\d\d-\d\d:\d\d(,\d\d:\d\d-\d\d:\d\d)*$/.test(c||'');
+const shOf=c=>(Object.hasOwn(SHIFTS,c||'')&&SHIFTS[c])||(isHours(c)?{name:'Heures du jour',segs:c.split(',').map(x=>x.split('-'))}:null);
+const codeLbl=c=>isHours(c)?c.split(',').map(x=>hfmt(t2m(x.slice(0,5)))+'-'+hfmt(endMin(x.slice(6)))).join(' / '):c;
 
 function itemsForDay(k){
   const out=[];
@@ -622,7 +633,17 @@ function itemsForDay(k){
   allBlocks().filter(b=>b.date===k).forEach(b=>out.push({type:'block',cat:catOf(b.cat),id:b.id,date:k,s:t2m(b.start),e:endMin(b.end),title:b.cat==='broflip'&&Object.hasOwn(CATS,'broflip')?CATS.broflip.name:(b.title||CATS[catOf(b.cat)].name),imp:!!b.imp,avec:avecNoms(b),reac:Object.values(b.reac||{}).filter(v=>REACS.includes(v)).join(''),tasks:b.tasks||[]}));
   return out.sort((a,b)=>a.s-b.s||b.e-a.e);
 }
+// un créneau entièrement compris dans un plus long (ex. Psy 14–15 dans une journée 8h30–23h) est posé par-dessus au lieu de le couper en deux colonnes
 function layout(items){
+  const tops=[],kids=new Map();
+  for(const it of items){ // triés par début puis le plus long d'abord : le parent passe toujours avant
+    const p=tops.find(t=>t.s<=it.s&&it.e<=t.e&&it.e-it.s<t.e-t.s);
+    if(p){it.over=true;if(!kids.has(p))kids.set(p,[]);kids.get(p).push(it)}else tops.push(it);
+  }
+  lanes(tops);
+  for(const [p,ks] of kids){lanes(ks);ks.forEach(k=>{const kn=k.n;k.n=p.n*kn;k.lane=p.lane*kn+k.lane})}
+}
+function lanes(items){
   let group=[],lanes=[],end=-1;
   const close=()=>{const n=lanes.length;group.forEach(it=>it.n=n);group=[];lanes=[]};
   for(const it of items){
@@ -638,7 +659,7 @@ function blockHTML(it){
   const top=(s-START*60)/60,h=(e-s)/60,w=100/it.n,left=it.lane*w;
   const done=it.tasks.filter(t=>t.done).length;
   const prog=it.tasks.length&&h>=1.5?`<span class="prog">✓ ${done}/${it.tasks.length}</span>`:'';
-  return `<div class="blk c-${it.cat}${it.imp?' has-imp':''}${h<1?' short':''}" style="--c:${CATS[it.cat].color};top:calc(${top} * var(--h) + 1px);height:calc(${h} * var(--h) - 2px);left:calc(${left}% + 2px);width:calc(${w}% - 4px)" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}">${it.imp?'<span class="imp" title="Important"></span>':''}<span class="bt">${esc(it.title)}</span>${it.avec?`<span class="ba">avec ${esc(it.avec)}</span>`:''}<span class="bh">${hfmt(it.s)}–${hfmt(it.e)}</span>${prog}${it.reac?`<span class="br">${it.reac}</span>`:''}</div>`;
+  return `<div class="blk c-${it.cat}${it.over?' over':''}${it.imp?' has-imp':''}${h<1?' short':''}" style="--c:${CATS[it.cat].color};top:calc(${top} * var(--h) + 1px);height:calc(${h} * var(--h) - 2px);left:calc(${left}% + 2px);width:calc(${w}% - 4px)" data-act="open" data-type="${it.type}" data-k="${it.date}" data-id="${it.id||''}">${it.imp?'<span class="imp" title="Important"></span>':''}<span class="bt">${esc(it.title)}</span>${it.avec?`<span class="ba">avec ${esc(it.avec)}</span>`:''}<span class="bh">${hfmt(it.s)}–${hfmt(it.e)}</span>${prog}${it.reac?`<span class="br">${it.reac}</span>`:''}</div>`;
 }
 function weekDays(){return [...Array(7)].map((_,i)=>addDays(curMon,i))}
 function renderPlan(){
@@ -846,7 +867,7 @@ function openEditor(opts){
 }
 
 function openShift(k){
-  const cur=codeOf(k),hrs=isHours(cur)?cur.split('-'):['',''];
+  const cur=codeOf(k),hrs=isHours(cur)&&cur.length===11?cur.split('-'):['',''];
   const btn=(code)=>{const s=SHIFTS[code];const sub=s.segs?s.segs.map(x=>hfmt(t2m(x[0]))+'–'+hfmt(t2m(x[1]))).join(' / '):'Pas de travail';
     return `<button class="shb ${s.segs?'work':''}${cur===code?' on':''}" data-act="setShift" data-k="${k}" data-code="${esc(code)}"><b>${esc(code)}</b><small>${esc(s.name)} · ${sub}</small></button>`};
   const html=`<div class="sh-head"><span class="tag t-ehpad">Poste ${esc(CATS.ehpad.name)}</span><button class="x" data-act="close" aria-label="Fermer">×</button></div>
